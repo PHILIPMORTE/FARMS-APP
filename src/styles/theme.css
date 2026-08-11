@@ -1,0 +1,94 @@
+/* ==========================================================================
+   THEME — role colours, base typography
+   Matches the FARMS prototype: light grey canvas, solid brand header bar,
+   white cards. Each role swaps the brand ramp; nothing else changes.
+   ========================================================================== */
+
+@layer base {
+  :root {
+    /* Farm Owner — green (also the landing page default) */
+    --brand-50: 240 253 244;
+    --brand-100: 220 252 231;
+    --brand-200: 187 247 208;
+    --brand-500: 34 197 94;
+    --brand-600: 22 163 74;
+    --brand-700: 21 128 61;
+    --brand-900: 20 83 45;
+    /* Tinted full-page wash behind the auth card */
+    --brand-wash: 222 247 230;
+  }
+
+  [data-role='owner'] {
+    --brand-50: 240 253 244;
+    --brand-100: 220 252 231;
+    --brand-200: 187 247 208;
+    --brand-500: 34 197 94;
+    --brand-600: 22 163 74;
+    --brand-700: 21 128 61;
+    --brand-900: 20 83 45;
+    --brand-wash: 222 247 230;
+  }
+
+  /* Farmer — amber/orange */
+  [data-role='farmer'] {
+    --brand-50: 255 251 235;
+    --brand-100: 254 243 199;
+    --brand-200: 253 230 138;
+    --brand-500: 245 158 11;
+    --brand-600: 217 119 6;
+    --brand-700: 180 83 9;
+    --brand-900: 120 53 15;
+    --brand-wash: 254 243 214;
+  }
+
+  /* Buyer — blue */
+  [data-role='buyer'] {
+    --brand-50: 239 246 255;
+    --brand-100: 219 234 254;
+    --brand-200: 191 219 254;
+    --brand-500: 59 130 246;
+    --brand-600: 37 99 235;
+    --brand-700: 29 78 216;
+    --brand-900: 30 58 138;
+    --brand-wash: 219 234 254;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-soil-50 text-soil-900 font-sans antialiased;
+  }
+
+  h1, h2, h3 {
+    @apply font-semibold tracking-[-0.01em];
+  }
+
+  /* Numbers carry meaning here — sacks, pesos, slots, wages.
+     Tabular figures keep columns aligned down a list. */
+  .num {
+    @apply tabular-nums;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-brand-600 ring-offset-2 rounded-lg;
+  }
+
+  /* Strip spinner arrows so a sack field cannot be scrolled to a bad value */
+  input[type='number']::-webkit-outer-spin-button,
+  input[type='number']::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type='number'] {
+    -moz-appearance: textfield;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}

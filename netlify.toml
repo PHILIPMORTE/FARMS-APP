@@ -1,0 +1,12 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# FARMS is a single-page app: the browser handles routing, not the server.
+# Without this, loading /owner/dashboard directly returns 404 because no such
+# file exists on disk. This hands every path to index.html so React Router
+# can resolve it.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

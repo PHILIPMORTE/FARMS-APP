@@ -1,0 +1,22 @@
+# Dependencies
+node_modules
+
+# Build output
+dist
+dist-ssr
+
+# Secrets — never commit these. Set them in your host's dashboard instead.
+.env
+.env.local
+.env.*.local
+
+# Editor / OS
+.vscode/*
+!.vscode/settings.json
+.idea
+.DS_Store
+*.local
+
+# Logs
+*.log
+npm-debug.log*

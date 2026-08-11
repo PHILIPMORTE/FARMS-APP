@@ -1,0 +1,109 @@
+/* ==========================================================================
+   COMPONENTS — surfaces, controls, labels
+   Colours resolve through the brand custom properties in theme.css, so a
+   button is green for an owner and blue for a buyer with no duplicated rules.
+   ========================================================================== */
+
+@layer components {
+  /* ------------------------------------------------------------ surfaces -- */
+
+  .card {
+    @apply bg-white rounded-xl border border-soil-200/80 shadow-[0_1px_3px_rgba(16,24,40,.06)];
+  }
+
+  /* Solid brand bar across the top of every signed-in screen */
+  .app-bar {
+    @apply bg-brand-600 text-white;
+  }
+
+  /* The tinted full-page wash behind login cards */
+  /* Landing background. Drop a photo at  public/farm-background.jpg  and it
+     appears here automatically. Until then the gradient below shows instead,
+     so the page never looks broken. */
+  .hero-photo {
+    background-color: rgb(var(--brand-700));
+    background-image: linear-gradient(160deg, rgb(var(--brand-700)), rgb(var(--brand-900)));
+  }
+
+  .hero-photo-img {
+    background-image: url('/farm-background.jpg');
+    background-size: cover;
+    background-position: center;
+  }
+
+  /* Darkens the photo so white text stays readable on any image */
+  .hero-scrim {
+    background: linear-gradient(180deg, rgba(10, 30, 15, 0.55) 0%, rgba(10, 30, 15, 0.7) 100%);
+  }
+
+  .auth-wash {
+    background-image: linear-gradient(
+      160deg,
+      rgb(var(--brand-wash)) 0%,
+      rgb(var(--brand-50)) 55%,
+      #ffffff 100%
+    );
+  }
+
+  /* ------------------------------------------------------------- inputs --- */
+
+  .label {
+    @apply block text-[13px] font-medium text-soil-800 mb-1.5;
+  }
+
+  .field {
+    @apply w-full rounded-lg border border-soil-200 bg-white px-3.5 py-2.5 text-[15px]
+           placeholder:text-soil-400 transition
+           focus:border-brand-600 focus:ring-2 focus:ring-brand-600/15 focus:outline-none
+           disabled:bg-soil-100 disabled:text-soil-400;
+  }
+
+  /* Filled input used on the auth screens — grey fill, no visible border
+     until focus, matching the prototype. */
+  .field-soft {
+    @apply w-full rounded-lg border border-transparent bg-soil-100 px-4 py-3 text-[15px]
+           placeholder:text-soil-400 transition
+           focus:border-brand-600 focus:bg-white focus:ring-2 focus:ring-brand-600/15 focus:outline-none;
+  }
+
+  .field-error {
+    @apply border-red-400 focus:border-red-500 focus:ring-red-500/15;
+  }
+
+  .err {
+    @apply mt-1.5 text-[13px] font-medium text-red-600;
+  }
+
+  /* ------------------------------------------------------------ buttons --- */
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-[15px]
+           font-semibold transition active:scale-[.99]
+           disabled:opacity-50 disabled:pointer-events-none;
+  }
+
+  .btn-primary {
+    @apply btn bg-brand-600 text-white hover:bg-brand-700;
+  }
+
+  .btn-ghost {
+    @apply btn bg-white border border-soil-200 text-soil-800 hover:bg-soil-100;
+  }
+
+  .btn-danger {
+    @apply btn bg-red-500 text-white hover:bg-red-600;
+  }
+
+  /* Small pill action used inside list rows, as in the prototype's cards */
+  .btn-sm {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5
+           text-[13px] font-semibold transition active:scale-[.99]
+           disabled:opacity-50 disabled:pointer-events-none;
+  }
+
+  /* -------------------------------------------------------------- chips --- */
+
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold;
+  }
+}
