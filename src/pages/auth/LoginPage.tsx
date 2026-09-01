@@ -2,16 +2,22 @@ import { useEffect, useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { useAuth } from '@/context/AuthContext'
-import { PhoneField, SoftField, SoftPasswordField } from '@/components/ui'
 import { ROLE_HOME, ROLE_LABEL } from '@/lib/format'
 import type { Role } from '@/lib/types'
 import { friendlyError, validateName, validatePassword, validatePhone } from '@/lib/validation'
 
-/** Where the "other role" link at the foot of the card points. */
+const BLURB: Record<Role, string> = {
+  owner: 'Manage your farm, crops, market listings and finances',
+  farmer: 'Find farm work opportunities and apply for jobs',
+  buyer: 'Browse and buy fresh farm products by the sack',
+  admin: 'Verify accounts and oversee the whole system',
+}
+
 const NEXT_ROLE: Record<Role, { role: Role; label: string }> = {
   owner: { role: 'buyer', label: 'Log in as Buyer' },
   farmer: { role: 'buyer', label: 'Log in as Buyer' },
   buyer: { role: 'owner', label: 'Log in as Farm Owner' },
+  admin: { role: 'owner', label: 'Log in as Farm Owner' },
 }
 
 type Errors = Record<string, string | null>
@@ -113,156 +119,331 @@ export default function LoginPage({ role }: { role: Role }) {
   const other = NEXT_ROLE[role]
 
   return (
-    <div className="auth-wash flex min-h-screen flex-col items-center justify-center px-5 py-10">
-      <div className="w-full max-w-md">
-        <div className="card animate-fade-up rounded-2xl p-7 shadow-lg sm:p-9">
-          {/* Brand */}
-          <div className="flex flex-col items-center text-center">
-            <span className="flex h-16 w-16 items-center justify-center rounded-full bg-brand-600 text-white">
-              <SproutIcon />
-            </span>
-            <h1 className="mt-4 text-[34px] font-extrabold leading-none tracking-tight">FARMS</h1>
-            <p className="mt-2 text-[15px] text-soil-600">Farm Management System</p>
-            <span className="mt-3 rounded-full bg-brand-50 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-brand-700">
-              {ROLE_LABEL[role]}
-            </span>
-          </div>
+    <div className="auth-wash flex min-h-screen flex-col px-5 py-6">
+      <Link
+        to="/"
+        className="relative z-10 inline-flex w-fit items-center gap-2.5 rounded-lg border border-white/20
+                   bg-white/10 px-3.5 py-2 text-[13px] font-semibold text-white backdrop-blur
+                   transition hover:border-white/40 hover:bg-white/20"
+      >
+        <span className="flex h-6 w-6 items-center justify-center rounded-md bg-white/15 text-white">
+          <SproutIcon size={14} />
+        </span>
+        FARMS
+      </Link>
 
-          {/* Google first, as in the design */}
-          <button onClick={onGoogle} className="btn-ghost mt-7 w-full py-3" disabled={busy}>
-            <GoogleMark />
-            Continue with Google
-          </button>
+      <div className="relative z-10 flex flex-1 items-center justify-center py-8">
+        <div className="w-full max-w-[26rem]">
+          <div className="auth-card animate-fade-up rounded-3xl p-7 sm:p-9">
+            <div className="flex flex-col items-center text-center">
+              <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-brand-700 shadow-[0_4px_14px_-4px_rgba(16,24,40,.25)]">
+                <SproutIcon size={26} />
+              </span>
 
-          <div className="my-5 flex items-center gap-3">
-            <span className="h-px flex-1 bg-soil-200" />
-            <span className="text-[12px] font-semibold text-soil-400">OR</span>
-            <span className="h-px flex-1 bg-soil-200" />
-          </div>
-
-          {/* Sign in / Create account */}
-          <div role="tablist" className="grid grid-cols-2 gap-1 rounded-lg bg-soil-100 p-1">
-            {(['signin', 'register'] as const).map((t) => (
-              <button
-                key={t}
-                role="tab"
-                aria-selected={tab === t}
-                onClick={() => switchTab(t)}
-                className={`rounded-md px-3 py-2 text-[13px] font-semibold transition ${
-                  tab === t ? 'bg-white text-soil-900 shadow-sm' : 'text-soil-600 hover:text-soil-900'
-                }`}
-              >
-                {t === 'signin' ? 'Sign in' : 'Create account'}
-              </button>
-            ))}
-          </div>
-
-          {errors.form && (
-            <div
-              role="alert"
-              className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-[13px] font-medium text-red-700"
-            >
-              {errors.form}
+              <h1 className="mt-5 text-[26px] font-bold leading-tight tracking-tight">
+                Sign in as {ROLE_LABEL[role]}
+              </h1>
+              <p className="mt-1.5 max-w-[19rem] text-[14px] leading-relaxed text-soil-600">
+                {BLURB[role]}
+              </p>
             </div>
-          )}
 
-          {tab === 'signin' ? (
-            <form onSubmit={onSignIn} className="mt-5 space-y-4" noValidate>
-              <PhoneField
-                value={form.phone}
-                error={errors.phone}
-                onChange={(e) => set('phone', e.target.value)}
-              />
-              <SoftPasswordField
-                label="Password"
-                autoComplete="current-password"
-                placeholder="Your password"
-                value={form.password}
-                error={errors.password}
-                onChange={(e) => set('password', e.target.value)}
-              />
-              <button type="submit" className="btn-primary w-full py-3" disabled={busy}>
-                {busy ? 'Signing in…' : `Sign In as ${ROLE_LABEL[role]}`}
-              </button>
-              <div className="text-center">
+            <div role="tablist" className="mt-6 grid grid-cols-2 gap-1 rounded-xl bg-white/70 p-1">
+              {(['signin', 'register'] as const).map((t) => (
                 <button
-                  type="button"
-                  onClick={onForgot}
-                  className="text-[13px] font-semibold text-brand-700 hover:underline"
+                  key={t}
+                  role="tab"
+                  aria-selected={tab === t}
+                  onClick={() => switchTab(t)}
+                  className={`rounded-lg px-3 py-2 text-[13px] font-semibold transition ${
+                    tab === t
+                      ? 'bg-white text-soil-900 shadow-sm'
+                      : 'text-soil-500 hover:text-soil-900'
+                  }`}
                 >
-                  Forgot password?
+                  {t === 'signin' ? 'Sign in' : 'Create account'}
                 </button>
+              ))}
+            </div>
+
+            {errors.form && (
+              <div
+                role="alert"
+                className="mt-4 animate-fade-up rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-[13px] font-medium text-red-700"
+              >
+                {errors.form}
               </div>
-            </form>
-          ) : (
-            <form onSubmit={onRegister} className="mt-5 space-y-4" noValidate>
-              <SoftField
-                label="Full Name"
-                autoComplete="name"
-                placeholder="Juan dela Cruz"
-                value={form.name}
-                error={errors.name}
-                onChange={(e) => set('name', e.target.value)}
-              />
-              <PhoneField
-                value={form.phone}
-                error={errors.phone}
-                onChange={(e) => set('phone', e.target.value)}
-              />
-              <SoftPasswordField
-                label="Password"
-                autoComplete="new-password"
-                placeholder="At least 8 characters"
-                value={form.password}
-                error={errors.password}
-                onChange={(e) => set('password', e.target.value)}
-              />
-              <SoftPasswordField
-                label="Confirm Password"
-                autoComplete="new-password"
-                placeholder="Type it again"
-                value={form.confirm}
-                error={errors.confirm}
-                onChange={(e) => set('confirm', e.target.value)}
-              />
-              <button type="submit" className="btn-primary w-full py-3" disabled={busy}>
-                {busy ? 'Creating account…' : `Create ${ROLE_LABEL[role]} Account`}
-              </button>
-            </form>
-          )}
+            )}
 
-          <p className="mt-5 text-center text-[12px] leading-relaxed text-soil-400">
-            The same mobile number can hold a separate account for each role.
-          </p>
-        </div>
+            {tab === 'signin' ? (
+              <form onSubmit={onSignIn} className="mt-5 space-y-3" noValidate>
+                <PhoneRow
+                  value={form.phone}
+                  error={errors.phone}
+                  onChange={(v) => set('phone', v)}
+                />
+                <PasswordRow
+                  value={form.password}
+                  error={errors.password}
+                  autoComplete="current-password"
+                  placeholder="Password"
+                  onChange={(v) => set('password', v)}
+                />
 
-        {/* Jump straight to another role's login */}
-        <div className="mt-5 flex justify-center">
-          <Link
-            to={`/${other.role}/login`}
-            className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-[14px]
-                       font-semibold text-soil-800 shadow-sm transition hover:shadow-md"
-          >
-            {other.label}
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
-              <path d="M5 12h13M13 6l6 6-6 6" />
-            </svg>
-          </Link>
-        </div>
+                <div className="flex justify-end pt-0.5">
+                  <button
+                    type="button"
+                    onClick={onForgot}
+                    className="text-[13px] font-medium text-soil-600 hover:text-soil-900 hover:underline"
+                  >
+                    Forgot password?
+                  </button>
+                </div>
 
-        <div className="mt-3 text-center">
-          <Link to="/" className="text-[13px] font-medium text-soil-600 hover:text-soil-900">
-            Choose a different role
-          </Link>
+                <button type="submit" className="btn-dark mt-1" disabled={busy}>
+                  {busy ? 'Signing in…' : 'Get Started'}
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={onRegister} className="mt-5 space-y-3" noValidate>
+                <IconRow
+                  icon={<UserIcon />}
+                  placeholder="Full name"
+                  autoComplete="name"
+                  value={form.name}
+                  error={errors.name}
+                  onChange={(v) => set('name', v)}
+                />
+                <PhoneRow
+                  value={form.phone}
+                  error={errors.phone}
+                  onChange={(v) => set('phone', v)}
+                />
+                <PasswordRow
+                  value={form.password}
+                  error={errors.password}
+                  autoComplete="new-password"
+                  placeholder="Password (at least 8 characters)"
+                  onChange={(v) => set('password', v)}
+                />
+                <PasswordRow
+                  value={form.confirm}
+                  error={errors.confirm}
+                  autoComplete="new-password"
+                  placeholder="Confirm password"
+                  onChange={(v) => set('confirm', v)}
+                />
+
+                <button type="submit" className="btn-dark mt-1" disabled={busy}>
+                  {busy ? 'Creating account…' : 'Create account'}
+                </button>
+              </form>
+            )}
+
+            <div className="my-5 flex items-center gap-3">
+              <span className="dotted-rule h-px flex-1" />
+              <span className="text-[12px] text-soil-400">Or sign in with</span>
+              <span className="dotted-rule h-px flex-1" />
+            </div>
+
+            <button
+              onClick={onGoogle}
+              disabled={busy}
+              className="flex w-full items-center justify-center gap-2.5 rounded-xl border border-soil-200
+                         bg-white py-3 text-[14px] font-semibold text-soil-800 transition
+                         hover:-translate-y-px hover:shadow-md disabled:opacity-50"
+            >
+              <GoogleMark />
+              Google
+            </button>
+          </div>
+
+          <div className="mt-5 flex flex-col items-center gap-2.5">
+            <Link
+              to={`/${other.role}/login`}
+              className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-[13px]
+                         font-semibold text-soil-800 shadow-sm transition hover:-translate-y-px hover:shadow-md"
+            >
+              {other.label}
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+                <path d="M5 12h13M13 6l6 6-6 6" />
+              </svg>
+            </Link>
+            <p className="text-center text-[12px] text-white/60">
+              One mobile number can hold a separate account for each role.
+            </p>
+          </div>
         </div>
       </div>
     </div>
   )
 }
 
-function SproutIcon() {
+function IconRow({
+  icon,
+  error,
+  onChange,
+  ...props
+}: {
+  icon: React.ReactNode
+  error?: string | null
+  onChange(v: string): void
+} & Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onChange'>) {
   return (
-    <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+    <div>
+      <div className="relative">
+        <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-soil-400">
+          {icon}
+        </span>
+        <input
+          className={`field-icon ${error ? 'border-red-300 bg-red-50/50' : ''}`}
+          aria-invalid={!!error}
+          onChange={(e) => onChange(e.target.value)}
+          {...props}
+        />
+      </div>
+      {error && <p className="err">{error}</p>}
+    </div>
+  )
+}
+
+function PhoneRow({
+  value,
+  error,
+  onChange,
+}: {
+  value: string
+  error?: string | null
+  onChange(v: string): void
+}) {
+  return (
+    <div>
+      <div className="relative">
+        <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+          <PhoneIcon />
+          <span className="text-[14px] font-semibold text-soil-500">+63</span>
+        </span>
+        <input
+          type="tel"
+          inputMode="tel"
+          autoComplete="tel"
+          placeholder="917 123 4567"
+          className={`field-icon pl-[5.2rem] ${error ? 'border-red-300 bg-red-50/50' : ''}`}
+          aria-invalid={!!error}
+          aria-label="Mobile number"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      </div>
+      {error ? (
+        <p className="err">{error}</p>
+      ) : (
+        <p className="mt-1 pl-1 text-[12px] text-soil-400">Your 10-digit mobile number</p>
+      )}
+    </div>
+  )
+}
+
+function PasswordRow({
+  value,
+  error,
+  placeholder,
+  autoComplete,
+  onChange,
+}: {
+  value: string
+  error?: string | null
+  placeholder: string
+  autoComplete: string
+  onChange(v: string): void
+}) {
+  const [shown, setShown] = useState(false)
+  return (
+    <div>
+      <div className="relative">
+        <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-soil-400">
+          <LockIcon />
+        </span>
+        <input
+          type={shown ? 'text' : 'password'}
+          autoComplete={autoComplete}
+          placeholder={placeholder}
+          className={`field-icon pr-11 ${error ? 'border-red-300 bg-red-50/50' : ''}`}
+          aria-invalid={!!error}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        />
+        <button
+          type="button"
+          onClick={() => setShown((v) => !v)}
+          aria-label={shown ? 'Hide password' : 'Show password'}
+          aria-pressed={shown}
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-soil-400 transition hover:text-soil-800"
+        >
+          {shown ? <EyeOffIcon /> : <EyeIcon />}
+        </button>
+      </div>
+      {error && <p className="err">{error}</p>}
+    </div>
+  )
+}
+
+const stroke = {
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 1.9,
+  strokeLinecap: 'round' as const,
+  strokeLinejoin: 'round' as const,
+}
+
+function UserIcon() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" {...stroke}>
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" />
+    </svg>
+  )
+}
+
+function PhoneIcon() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" {...stroke}>
+      <rect x="6" y="2" width="12" height="20" rx="2.5" />
+      <path d="M11 18.5h2" />
+    </svg>
+  )
+}
+
+function LockIcon() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" {...stroke}>
+      <rect x="4" y="10" width="16" height="11" rx="2.5" />
+      <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+    </svg>
+  )
+}
+
+function EyeIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" {...stroke}>
+      <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  )
+}
+
+function EyeOffIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" {...stroke}>
+      <path d="M10.6 6.2A9.9 9.9 0 0 1 12 6c6.4 0 10 6 10 6a17 17 0 0 1-3 3.6M6.5 7.8A17 17 0 0 0 2 12s3.6 6 10 6a9.6 9.6 0 0 0 4-.8" />
+      <path d="M3 3l18 18" />
+      <path d="M9.9 10.1a3 3 0 0 0 4.1 4.2" />
+    </svg>
+  )
+}
+
+function SproutIcon({ size = 26 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 21V11" />
       <path d="M12 11C12 7.5 9.5 5 6 5c0 3.5 2.5 6 6 6z" fill="currentColor" stroke="none" />
       <path d="M12 12c0-3.5 2.5-6 6-6 0 3.5-2.5 6-6 6z" fill="currentColor" stroke="none" />

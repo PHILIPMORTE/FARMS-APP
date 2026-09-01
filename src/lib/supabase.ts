@@ -11,8 +11,6 @@ if (!url || !anonKey) {
 
 export const supabase = createClient(url, anonKey, {
   auth: {
-    // Sessions live in the Supabase auth store only. No application data is
-    // ever written to localStorage — everything reads from and writes to Postgres.
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true,

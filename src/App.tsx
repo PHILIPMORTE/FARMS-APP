@@ -9,6 +9,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary'
 import Landing from '@/pages/Landing'
 import LoginPage from '@/pages/auth/LoginPage'
 import AuthCallback from '@/pages/auth/AuthCallback'
+import AdminLoginPage from '@/pages/auth/AdminLoginPage'
 import NotificationsPage from '@/pages/NotificationsPage'
 
 import OwnerDashboard from '@/pages/owner/Dashboard'
@@ -21,6 +22,15 @@ import OwnerAccount from '@/pages/owner/Account'
 import FarmerJobs from '@/pages/farmer/Jobs'
 import FarmerApplications from '@/pages/farmer/Applications'
 import FarmerAccount from '@/pages/farmer/Account'
+import FarmerLogs from '@/pages/farmer/Logs'
+import FarmerHistory from '@/pages/farmer/History'
+
+import OwnerOrders from '@/pages/owner/Orders'
+import OwnerAttendance from '@/pages/owner/Attendance'
+import { VerificationGate } from '@/components/VerificationGate'
+import { AdminDashboard, AdminVerifications } from '@/pages/admin/Dashboard'
+import { AdminUsers, AdminCatalog, AdminOrders } from '@/pages/admin/Manage'
+import { AdminRequests, RequestAdminAccess } from '@/pages/admin/Requests'
 
 import BuyerMarket from '@/pages/buyer/Market'
 import BuyerOrders from '@/pages/buyer/Orders'
@@ -37,14 +47,17 @@ export default function App() {
         <Route path="/owner/login" element={<LoginPage role="owner" />} />
         <Route path="/farmer/login" element={<LoginPage role="farmer" />} />
         <Route path="/buyer/login" element={<LoginPage role="buyer" />} />
+        <Route path="/admin/login" element={<AdminLoginPage />} />
+        <Route path="/admin/request" element={<RequestAdminAccess />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
 
-        {/* Farm Owner */}
         <Route
           path="/owner"
           element={
             <ProtectedRoute role="owner">
-              <AppShell role="owner" />
+              <VerificationGate role="owner">
+                <AppShell role="owner" />
+              </VerificationGate>
             </ProtectedRoute>
           }
         >
@@ -54,32 +67,38 @@ export default function App() {
           <Route path="market" element={<OwnerMarket />} />
           <Route path="finance" element={<OwnerFinance />} />
           <Route path="jobs" element={<OwnerJobs />} />
+          <Route path="attendance" element={<OwnerAttendance />} />
+          <Route path="orders" element={<OwnerOrders />} />
           <Route path="account" element={<OwnerAccount />} />
           <Route path="notifications" element={<NotificationsPage />} />
         </Route>
 
-        {/* Farmer */}
         <Route
           path="/farmer"
           element={
             <ProtectedRoute role="farmer">
-              <AppShell role="farmer" />
+              <VerificationGate role="farmer">
+                <AppShell role="farmer" />
+              </VerificationGate>
             </ProtectedRoute>
           }
         >
           <Route index element={<Navigate to="/farmer/jobs" replace />} />
           <Route path="jobs" element={<FarmerJobs />} />
           <Route path="applications" element={<FarmerApplications />} />
+          <Route path="logs" element={<FarmerLogs />} />
+          <Route path="history" element={<FarmerHistory />} />
           <Route path="account" element={<FarmerAccount />} />
           <Route path="notifications" element={<NotificationsPage />} />
         </Route>
 
-        {/* Buyer */}
         <Route
           path="/buyer"
           element={
             <ProtectedRoute role="buyer">
-              <AppShell role="buyer" />
+              <VerificationGate role="buyer">
+                <AppShell role="buyer" />
+              </VerificationGate>
             </ProtectedRoute>
           }
         >
@@ -87,6 +106,24 @@ export default function App() {
           <Route path="market" element={<BuyerMarket />} />
           <Route path="orders" element={<BuyerOrders />} />
           <Route path="account" element={<BuyerAccount />} />
+          <Route path="notifications" element={<NotificationsPage />} />
+        </Route>
+
+        <Route
+          path="/admin"
+          element={
+            <ProtectedRoute role="admin">
+              <AppShell role="admin" />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<Navigate to="/admin/dashboard" replace />} />
+          <Route path="dashboard" element={<AdminDashboard />} />
+          <Route path="verifications" element={<AdminVerifications />} />
+          <Route path="users" element={<AdminUsers />} />
+          <Route path="requests" element={<AdminRequests />} />
+          <Route path="catalog" element={<AdminCatalog />} />
+          <Route path="orders" element={<AdminOrders />} />
           <Route path="notifications" element={<NotificationsPage />} />
         </Route>
 

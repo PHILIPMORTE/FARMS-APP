@@ -8,12 +8,6 @@ interface State {
   error: Error | null
 }
 
-/**
- * Without this, any render error blanks the whole app with no explanation —
- * you get a white screen and have to open the browser console to learn
- * anything. This catches the crash, keeps the rest of the app alive, and
- * shows what actually went wrong.
- */
 export class ErrorBoundary extends Component<Props, State> {
   state: State = { error: null }
 

@@ -27,7 +27,6 @@ export default function FarmerApplications() {
 
       const list = (data as unknown as Row[]) ?? []
 
-      // For accepted applications, pull the farm owner's contact details.
       const ownerIds = [
         ...new Set(
           list
@@ -63,7 +62,7 @@ export default function FarmerApplications() {
   if (!rows) return <Spinner label="Loading your applications" />
 
   return (
-    <div className="space-y-5">
+    <div className="animate-fade-up space-y-5">
       <div>
         <h1 className="text-[22px] font-bold">My applications</h1>
         <p className="mt-0.5 text-[13px] text-soil-600">

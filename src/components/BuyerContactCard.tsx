@@ -1,18 +1,36 @@
-import { useState } from 'react'
-import { initials } from '@/lib/format'
+import { useEffect, useState } from 'react'
+import { supabase } from '@/lib/supabase'
+import { initials, peso, sacks, shortDate } from '@/lib/format'
 import { displayPhone } from '@/lib/validation'
 import type { Profile } from '@/lib/types'
 
-/**
- * Everything the farm owner needs to reach a buyer and find them: name,
- * company, a tappable number, and a map of the delivery address.
- *
- * The map is a plain Google Maps embed built from the address text. It needs
- * no API key and costs nothing, which matters for a project that has to keep
- * running after the defence.
- */
 export function BuyerContactCard({ buyer }: { buyer: Profile | null | undefined }) {
   const [mapOpen, setMapOpen] = useState(false)
+  const [history, setHistory] = useState<
+    { id: string; quantity: number; total_price: number; created_at: string; variety: string }[] | null
+  >(null)
+  const [historyOpen, setHistoryOpen] = useState(false)
+
+  useEffect(() => {
+    if (!historyOpen || history || !buyer) return
+    supabase
+      .from('orders')
+      .select('id, quantity, total_price, created_at, products(variety)')
+      .eq('buyer_id', buyer.id)
+      .order('created_at', { ascending: false })
+      .limit(10)
+      .then(({ data }) =>
+        setHistory(
+          ((data as any[]) ?? []).map((o) => ({
+            id: o.id,
+            quantity: o.quantity,
+            total_price: o.total_price,
+            created_at: o.created_at,
+            variety: o.products?.variety ?? 'Product',
+          })),
+        ),
+      )
+  }, [historyOpen, buyer?.id])
 
   if (!buyer) {
     return (
@@ -48,7 +66,6 @@ export function BuyerContactCard({ buyer }: { buyer: Profile | null | undefined 
         </p>
       )}
 
-      {/* Contact — these open the phone's own dialer and messaging app */}
       <div className="mt-3 grid grid-cols-2 gap-2">
         <a href={`tel:${buyer.phone}`} className="btn-primary py-2 text-[13px]">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -63,6 +80,43 @@ export function BuyerContactCard({ buyer }: { buyer: Profile | null | undefined 
           Text buyer
         </a>
       </div>
+
+      <button
+        onClick={() => setHistoryOpen((v) => !v)}
+        aria-expanded={historyOpen}
+        className="mt-2 w-full rounded-lg border border-soil-200 px-3 py-2 text-[13px] font-semibold text-soil-800 hover:bg-soil-100"
+      >
+        {historyOpen ? 'Hide purchase history' : 'Purchase history'}
+      </button>
+
+      {historyOpen && (
+        <div className="mt-2 rounded-lg border border-soil-200">
+          {history === null ? (
+            <p className="px-3.5 py-3 text-[13px] text-soil-400">Loading…</p>
+          ) : history.length === 0 ? (
+            <p className="px-3.5 py-3 text-[13px] text-soil-600">
+              This is their first order with any farm.
+            </p>
+          ) : (
+            <ul className="divide-y divide-soil-200">
+              {history.map((h) => (
+                <li key={h.id} className="flex items-center justify-between gap-3 px-3.5 py-2.5">
+                  <span className="min-w-0">
+                    <span className="block truncate text-[13px] font-semibold">{h.variety}</span>
+                    <span className="num block text-[11px] text-soil-400">
+                      {shortDate(h.created_at)}
+                    </span>
+                  </span>
+                  <span className="num shrink-0 text-right text-[12px]">
+                    <span className="block font-semibold">{sacks(h.quantity)} sacks</span>
+                    <span className="block text-brand-700">{peso(h.total_price)}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {mapQuery && (
         <>

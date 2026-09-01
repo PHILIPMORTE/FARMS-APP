@@ -1,8 +1,3 @@
-/**
- * Philippine mobile numbers. Accepts what people actually type —
- * 09171234567, +639171234567, 0917 123 4567 — and normalises to E.164,
- * which is the format Supabase phone auth expects.
- */
 const PH_LOCAL = /^09\d{9}$/
 const PH_E164 = /^\+639\d{9}$/
 
@@ -15,7 +10,6 @@ export function normalisePhone(input: string): string | null {
   return null
 }
 
-/** Display form: 0917 123 4567 */
 export function displayPhone(e164: string | null | undefined): string {
   if (!e164) return '—'
   const local = e164.startsWith('+63') ? `0${e164.slice(3)}` : e164
@@ -41,10 +35,6 @@ export function validateName(input: string): string | null {
   return null
 }
 
-/**
- * Sacks are counted, not measured. Rejects decimals outright rather than
- * silently rounding, so the person sees why the value was refused.
- */
 export function validateSacks(raw: string | number, opts: { min?: number; max?: number } = {}): string | null {
   const { min = 1, max } = opts
   const s = String(raw).trim()
@@ -75,7 +65,6 @@ export function validateRequired(input: string, label: string): string | null {
   return input.trim() ? null : `${label} is required.`
 }
 
-/** Turns Supabase/Postgres errors into something a farmer can act on. */
 export function friendlyError(error: unknown): string {
   const msg = (error as { message?: string })?.message ?? String(error)
   if (/duplicate key.*profiles_phone_role_key/i.test(msg))

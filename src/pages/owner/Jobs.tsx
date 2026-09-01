@@ -12,12 +12,15 @@ import {
   Spinner,
   TextArea,
 } from '@/components/ui'
-import { CROP_EMOJI, peso, relativeDate, shortDate, titleCase } from '@/lib/format'
+import { CROP_EMOJI, peso, relativeDate, shortDate, titleCase,
+  todayISO,
+} from '@/lib/format'
 import { displayPhone, friendlyError, validateAmount, validateRequired, validateWholeNumber } from '@/lib/validation'
 import type { AppStatus, JobApplication, JobCrop, JobPost, JobType } from '@/lib/types'
 
 const JOB_TYPES: JobType[] = ['seasonal', 'part-time', 'full-time']
 const JOB_CROPS: JobCrop[] = ['rice', 'corn', 'watermelon', 'general']
+
 
 export default function OwnerJobs() {
   const { profile, farm } = useAuth()
@@ -49,8 +52,6 @@ export default function OwnerJobs() {
 
     const rows = (applications as unknown as JobApplication[]) ?? []
 
-    // farmer_profiles keys off profiles.id, so there is no direct relationship
-    // to embed from job_applications. Fetch the worker details and merge.
     const farmerIds = [...new Set(rows.map((r) => r.farmer_id))]
     if (farmerIds.length) {
       const { data: fps } = await supabase.from('farmer_profiles').select('*').in('id', farmerIds)
@@ -141,8 +142,6 @@ export default function OwnerJobs() {
     </div>
   )
 }
-
-/* --------------------------------------------------------------- posts --- */
 
 function PostsTab({
   posts,
@@ -299,8 +298,6 @@ function PostsTab({
   )
 }
 
-/* -------------------------------------------------------- applications --- */
-
 function ApplicationsTab({
   posts,
   apps,
@@ -422,8 +419,6 @@ function ApplicationsTab({
                   ))}
                 </div>
 
-                {/* Reach the applicant directly. These open the phone's own
-                    dialer and messaging app — no calling service involved. */}
                 {a.profiles?.phone && (
                   <div className="flex gap-2 border-t border-soil-200/70 pt-3">
                     <a
@@ -474,8 +469,6 @@ function ApplicationsTab({
   )
 }
 
-/* ------------------------------------------------------------ post job --- */
-
 function PostJobDialog({
   open,
   onClose,
@@ -499,7 +492,7 @@ function PostJobDialog({
     wage: '',
     slots: '',
     location: defaultLocation,
-    start_date: new Date().toISOString().slice(0, 10),
+    start_date: todayISO(),
     end_date: '',
   })
   const [errors, setErrors] = useState<Record<string, string | null>>({})
@@ -515,7 +508,7 @@ function PostJobDialog({
     const next = {
       title: validateRequired(form.title, 'Job title'),
       wage: validateAmount(form.wage, 'daily wage'),
-      // Workers are counted the same way sacks are: whole numbers only.
+
       slots: validateWholeNumber(form.slots, 1, 'number of slots'),
       location: validateRequired(form.location, 'Location'),
       start_date: form.start_date ? null : 'Pick a start date.',
@@ -632,13 +625,6 @@ function PostJobDialog({
             )}
           </div>
         </div>
-        <Field
-          label="Location"
-          placeholder="Barangay, city or municipality"
-          value={form.location}
-          error={errors.location}
-          onChange={(e) => set('location', e.target.value)}
-        />
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label className="label" htmlFor="sd">
@@ -671,6 +657,14 @@ function PostJobDialog({
             )}
           </div>
         </div>
+
+        <Field
+          label="Location"
+          placeholder="Barangay, city or municipality"
+          value={form.location}
+          error={errors.location}
+          onChange={(e) => set('location', e.target.value)}
+        />
       </form>
     </Dialog>
   )

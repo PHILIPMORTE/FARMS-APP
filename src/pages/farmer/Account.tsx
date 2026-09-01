@@ -58,7 +58,6 @@ export default function FarmerAccount() {
     setErrors((e) => ({ ...e, [k]: null }))
   }
 
-  /** Availability writes straight through — farms rely on it being current. */
   async function setAvailability(next: Availability) {
     if (!profile) return
     setFp((p) => (p ? { ...p, availability: next } : p))
@@ -94,8 +93,6 @@ export default function FarmerAccount() {
 
     const normalised = normalisePhone(form.phone)!
 
-    // Changing to a number already registered under this role must be blocked
-    // here, not just by the database, so the person sees which field is wrong.
     if (normalised !== profile.phone && (await isPhoneTakenForRole(normalised, 'farmer'))) {
       const msg = 'This number is already registered as a Farmer. Use a different number.'
       setErrors({ phone: msg })

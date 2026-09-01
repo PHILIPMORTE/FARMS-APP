@@ -41,8 +41,6 @@ export default function OwnerAccount() {
 
     const normalised = normalisePhone(form.phone)!
 
-    // Changing to a number already registered under this role must be blocked
-    // here, not just by the database, so the person sees which field is wrong.
     if (normalised !== profile.phone && (await isPhoneTakenForRole(normalised, 'owner'))) {
       const msg = 'This number is already registered as a Farm Owner. Use a different number.'
       setErrors({ phone: msg })

@@ -16,12 +16,6 @@ interface NotificationsState {
 
 const Ctx = createContext<NotificationsState | null>(null)
 
-/**
- * Notifications are read in two places at once — the bell badge in AppShell and
- * the notifications page itself. Fetching in both meant two realtime channels
- * with the same topic name, where unmounting one tore down the other. This
- * provider subscribes exactly once and shares the result.
- */
 export function NotificationsProvider({ children }: { children: ReactNode }) {
   const { profile } = useAuth()
   const [items, setItems] = useState<Notification[]>([])
@@ -45,8 +39,6 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
         .order('created_at', { ascending: false })
         .limit(100)
 
-      // Surface a query failure rather than rendering an empty list, which
-      // would look like "no notifications" when something is actually broken.
       if (qError) {
         setError(qError.message)
         setItems([])
@@ -108,8 +100,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
 
 export function useNotifications(): NotificationsState {
   const ctx = useContext(Ctx)
-  // Falling back to an inert value keeps the bell rendering even if a screen
-  // somehow sits outside the provider, rather than crashing the whole app.
+
   if (!ctx) {
     return {
       items: [],

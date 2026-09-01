@@ -40,8 +40,6 @@ export default function BuyerAccount() {
     e.preventDefault()
     if (!profile) return
 
-    // Farm owners deliver to this address and call this number, so both are
-    // required rather than optional.
     const next = {
       name: validateName(form.name),
       phone: validatePhone(form.phone),
@@ -53,8 +51,6 @@ export default function BuyerAccount() {
 
     const normalised = normalisePhone(form.phone)!
 
-    // Changing to a number already registered under this role must be blocked
-    // here, not just by the database, so the person sees which field is wrong.
     if (normalised !== profile.phone && (await isPhoneTakenForRole(normalised, 'buyer'))) {
       const msg = 'This number is already registered as a Buyer. Use a different number.'
       setErrors({ phone: msg })

@@ -9,11 +9,6 @@ import { ROLE_HOME, ROLE_LABEL } from '@/lib/format'
 import type { Role } from '@/lib/types'
 import { friendlyError, validateName, validatePhone } from '@/lib/validation'
 
-/**
- * Where Google sends people back to. Google supplies a name and email but never
- * a Philippine mobile number, so a first-time user for this role finishes the
- * profile here before entering the app.
- */
 export default function AuthCallback() {
   const [params] = useSearchParams()
   const navigate = useNavigate()
@@ -49,7 +44,6 @@ export default function AuthCallback() {
         return
       }
 
-      // First time in this role — prefill what Google gave us.
       const meta = data.session.user.user_metadata as { full_name?: string; name?: string }
       setGoogleEmail(data.session.user.email ?? '')
       setForm((f) => ({ ...f, name: meta.full_name ?? meta.name ?? '' }))
@@ -57,7 +51,6 @@ export default function AuthCallback() {
     })()
   }, [role])
 
-  /** Sign out and bounce back to the role's login so Google asks again. */
   async function switchAccount() {
     await supabase.auth.signOut()
     navigate(`/${role}/login`, { replace: true })
@@ -95,8 +88,6 @@ export default function AuthCallback() {
           Google does not share a mobile number. Add yours so farms and buyers can reach you.
         </p>
 
-        {/* Show which account came back, so a wrong pick is caught before
-            a profile is created against it. */}
         {googleEmail && (
           <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-soil-200 bg-white px-4 py-3">
             <span className="min-w-0">

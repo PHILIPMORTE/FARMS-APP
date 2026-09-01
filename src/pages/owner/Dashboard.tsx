@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
-import { Empty, SectionHeading, Spinner, Stat } from '@/components/ui'
+import { Empty, SectionHeading, Select, Spinner, Stat } from '@/components/ui'
+import { MyFarmRank, TopFarms } from '@/components/TopFarms'
 import { CROPS, CROP_EMOJI, peso, pesoShort, relativeDate, sacks, titleCase, weightNote } from '@/lib/format'
 import type { Crop, InventoryItem } from '@/lib/types'
 
@@ -18,14 +19,13 @@ interface Snapshot {
 export default function OwnerDashboard() {
   const { profile, farm } = useAuth()
   const [data, setData] = useState<Snapshot | null>(null)
+  const [stockFilter, setStockFilter] = useState('all')
 
   useEffect(() => {
     if (!farm || !profile) return
     let alive = true
 
     ;(async () => {
-      // Writes any harvest reminders that are now due. Safe to call repeatedly —
-      // it will not create the same reminder twice.
       supabase.rpc('generate_harvest_reminders').then(({ error }) => {
         if (error) console.warn('Harvest reminders skipped:', error.message)
       })
@@ -50,7 +50,6 @@ export default function OwnerDashboard() {
 
       const stock: Record<Crop, number> = { rice: 0, corn: 0, watermelon: 0 }
       for (const row of (inv.data ?? []) as InventoryItem[]) {
-        // Integer arithmetic only — a stock total is a count of sacks.
         stock[row.crop] += Math.floor(row.quantity)
       }
 
@@ -59,7 +58,7 @@ export default function OwnerDashboard() {
         revenue: (txns.data ?? []).reduce((s, t) => s + Number(t.amount), 0),
         schedules: scheds.data?.length ?? 0,
         stock,
-        recent: ((inv.data ?? []) as InventoryItem[]).slice(0, 6),
+        recent: ((inv.data ?? []) as InventoryItem[]).slice(0, 40),
         openJobs: (jobs.data ?? []).filter((j) => j.status === 'open').length,
         pendingApps,
       })
@@ -72,6 +71,10 @@ export default function OwnerDashboard() {
 
   if (!data) return <Spinner label="Loading your farm" />
 
+  const shownStock = (
+    stockFilter === 'all' ? data.recent : data.recent.filter((r) => r.crop === stockFilter)
+  ).slice(0, 6)
+
   return (
     <div className="space-y-7">
       <div>
@@ -81,14 +84,13 @@ export default function OwnerDashboard() {
         <p className="mt-0.5 text-[13px] text-soil-600">{farm?.name}</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="stagger grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Revenue" value={pesoShort(data.revenue)} accent="green" sub="All recorded income" />
         <Stat label="Active schedules" value={String(data.schedules)} sub="Planting plans" />
         <Stat label="Rice stock" value={sacks(data.stock.rice)} sub={weightNote(data.stock.rice)} />
         <Stat label="Corn stock" value={sacks(data.stock.corn)} sub={weightNote(data.stock.corn)} />
       </div>
 
-      {/* Weather */}
       <div className="card flex items-center justify-between gap-4 px-5 py-4">
         <div>
           <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-soil-400">Today</p>
@@ -98,7 +100,6 @@ export default function OwnerDashboard() {
         <span className="text-4xl" aria-hidden>☀️</span>
       </div>
 
-      {/* Inventory */}
       <section>
         <SectionHeading
           action={
@@ -123,17 +124,35 @@ export default function OwnerDashboard() {
         </div>
       </section>
 
-      {/* Recent additions */}
       <section>
-        <SectionHeading>Recent stock added</SectionHeading>
-        {data.recent.length === 0 ? (
+        <SectionHeading
+          action={
+            <div className="w-40">
+              <Select
+                label=""
+                value={stockFilter}
+                onChange={(e) => setStockFilter(e.target.value)}
+                options={[
+                  { value: 'all', label: 'All crops' },
+                  ...CROPS.map((c) => ({
+                    value: c,
+                    label: `${CROP_EMOJI[c]} ${titleCase(c)}`,
+                  })),
+                ]}
+              />
+            </div>
+          }
+        >
+          Recent stock added
+        </SectionHeading>
+        {shownStock.length === 0 ? (
           <Empty
-            title="No stock recorded yet"
-            body="Harvest entries appear here once you add them to inventory."
+            title={stockFilter === 'all' ? 'No stock recorded yet' : `No ${stockFilter} recorded`}
+            body="Harvest entries appear here once you record them on the Calendar."
           />
         ) : (
           <ul className="card divide-y divide-soil-200/70">
-            {data.recent.map((row) => (
+            {shownStock.map((row) => (
               <li key={row.id} className="flex items-center justify-between gap-3 px-4 py-3">
                 <span className="flex min-w-0 items-center gap-3">
                   <span className="text-xl" aria-hidden>{CROP_EMOJI[row.crop]}</span>
@@ -151,7 +170,14 @@ export default function OwnerDashboard() {
         )}
       </section>
 
-      {/* Hiring peek */}
+      <section>
+        <SectionHeading>Sales ranking</SectionHeading>
+        <div className="space-y-3">
+          <MyFarmRank days={7} />
+          <TopFarms limit={5} highlightFarmId={farm?.id} showPeriodPicker={false} />
+        </div>
+      </section>
+
       <section>
         <SectionHeading
           action={
@@ -162,7 +188,7 @@ export default function OwnerDashboard() {
         >
           Hiring
         </SectionHeading>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="stagger grid grid-cols-2 gap-3">
           <Stat label="Open job posts" value={String(data.openJobs)} />
           <Stat
             label="Pending applications"

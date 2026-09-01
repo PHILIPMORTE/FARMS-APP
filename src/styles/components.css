@@ -1,25 +1,13 @@
-/* ==========================================================================
-   COMPONENTS — surfaces, controls, labels
-   Colours resolve through the brand custom properties in theme.css, so a
-   button is green for an owner and blue for a buyer with no duplicated rules.
-   ========================================================================== */
-
 @layer components {
-  /* ------------------------------------------------------------ surfaces -- */
 
   .card {
     @apply bg-white rounded-xl border border-soil-200/80 shadow-[0_1px_3px_rgba(16,24,40,.06)];
   }
 
-  /* Solid brand bar across the top of every signed-in screen */
   .app-bar {
     @apply bg-brand-600 text-white;
   }
 
-  /* The tinted full-page wash behind login cards */
-  /* Landing background. Drop a photo at  public/farm-background.jpg  and it
-     appears here automatically. Until then the gradient below shows instead,
-     so the page never looks broken. */
   .hero-photo {
     background-color: rgb(var(--brand-700));
     background-image: linear-gradient(160deg, rgb(var(--brand-700)), rgb(var(--brand-900)));
@@ -31,21 +19,11 @@
     background-position: center;
   }
 
-  /* Darkens the photo so white text stays readable on any image */
   .hero-scrim {
-    background: linear-gradient(180deg, rgba(10, 30, 15, 0.55) 0%, rgba(10, 30, 15, 0.7) 100%);
+    background:
+      linear-gradient(105deg, rgba(6, 20, 12, 0.86) 0%, rgba(6, 20, 12, 0.55) 45%, rgba(6, 20, 12, 0.35) 100%),
+      linear-gradient(180deg, rgba(6, 20, 12, 0.5) 0%, transparent 30%, rgba(6, 20, 12, 0.55) 100%);
   }
-
-  .auth-wash {
-    background-image: linear-gradient(
-      160deg,
-      rgb(var(--brand-wash)) 0%,
-      rgb(var(--brand-50)) 55%,
-      #ffffff 100%
-    );
-  }
-
-  /* ------------------------------------------------------------- inputs --- */
 
   .label {
     @apply block text-[13px] font-medium text-soil-800 mb-1.5;
@@ -58,8 +36,6 @@
            disabled:bg-soil-100 disabled:text-soil-400;
   }
 
-  /* Filled input used on the auth screens — grey fill, no visible border
-     until focus, matching the prototype. */
   .field-soft {
     @apply w-full rounded-lg border border-transparent bg-soil-100 px-4 py-3 text-[15px]
            placeholder:text-soil-400 transition
@@ -73,8 +49,6 @@
   .err {
     @apply mt-1.5 text-[13px] font-medium text-red-600;
   }
-
-  /* ------------------------------------------------------------ buttons --- */
 
   .btn {
     @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-[15px]
@@ -94,16 +68,125 @@
     @apply btn bg-red-500 text-white hover:bg-red-600;
   }
 
-  /* Small pill action used inside list rows, as in the prototype's cards */
   .btn-sm {
     @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5
            text-[13px] font-semibold transition active:scale-[.99]
            disabled:opacity-50 disabled:pointer-events-none;
   }
 
-  /* -------------------------------------------------------------- chips --- */
-
   .chip {
     @apply inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold;
+  }
+
+  .auth-wash {
+    position: relative;
+    background-color: #14200f;
+    background-image: url('/farm-background.jpg');
+    background-size: cover;
+    background-position: center;
+  }
+
+  .auth-wash::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      linear-gradient(105deg, rgba(6, 20, 12, 0.82) 0%, rgba(6, 20, 12, 0.5) 45%, rgba(6, 20, 12, 0.35) 100%),
+      linear-gradient(180deg, rgba(6, 20, 12, 0.5) 0%, transparent 30%, rgba(6, 20, 12, 0.55) 100%);
+  }
+
+  .auth-card {
+    background-image: linear-gradient(
+      170deg,
+      rgb(var(--brand-100) / 0.9) 0%,
+      #ffffff 42%,
+      #ffffff 100%
+    );
+    box-shadow:
+      0 24px 60px -18px rgba(4, 14, 8, 0.65),
+      0 0 0 1px rgba(255, 255, 255, 0.5) inset;
+  }
+
+  .field-icon {
+    @apply w-full rounded-xl border border-transparent bg-soil-100/80 py-3.5 pl-11 pr-4 text-[15px]
+           text-soil-900 placeholder:text-soil-400 transition
+           focus:border-brand-600/40 focus:bg-white focus:outline-none focus:ring-4 focus:ring-brand-600/10;
+  }
+
+  .btn-dark {
+    @apply btn w-full rounded-xl bg-soil-900 py-3.5 text-white
+           shadow-[0_4px_14px_-4px_rgba(20,25,34,.5)] hover:bg-soil-800;
+  }
+
+  .dotted-rule {
+    background-image: radial-gradient(circle, rgb(var(--brand-200)) 1.2px, transparent 1.2px);
+    background-size: 7px 1px;
+    background-repeat: repeat-x;
+    background-position: center;
+  }
+}
+
+@layer components {
+  .admin-login {
+    background-color: #10151b;
+    background-image:
+      linear-gradient(105deg, rgba(10, 14, 20, 0.94) 0%, rgba(10, 14, 20, 0.86) 50%, rgba(10, 14, 20, 0.9) 100%),
+      url('/farm-background.jpg');
+    background-size: cover;
+    background-position: center;
+  }
+
+  .admin-card {
+    background: #22262d;
+    box-shadow:
+      0 24px 60px -18px rgba(0, 0, 0, 0.7),
+      0 0 0 1px rgba(255, 255, 255, 0.06) inset;
+  }
+}
+
+@layer utilities {
+  .scrollbar-none {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@layer components {
+  .stagger > * {
+    animation: fade-up 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .stagger > *:nth-child(1) { animation-delay: 0ms; }
+  .stagger > *:nth-child(2) { animation-delay: 45ms; }
+  .stagger > *:nth-child(3) { animation-delay: 90ms; }
+  .stagger > *:nth-child(4) { animation-delay: 135ms; }
+  .stagger > *:nth-child(5) { animation-delay: 180ms; }
+  .stagger > *:nth-child(6) { animation-delay: 225ms; }
+}
+
+@layer components {
+  .dialog-panel {
+    max-height: 90vh;
+  }
+
+  @supports (height: 100dvh) {
+    .dialog-panel {
+      max-height: 90dvh;
+    }
+  }
+
+  @media (min-width: 640px) {
+    .dialog-panel {
+      max-height: 85vh;
+    }
+
+    @supports (height: 100dvh) {
+      .dialog-panel {
+        max-height: 85dvh;
+      }
+    }
   }
 }

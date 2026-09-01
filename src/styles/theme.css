@@ -1,12 +1,6 @@
-/* ==========================================================================
-   THEME — role colours, base typography
-   Matches the FARMS prototype: light grey canvas, solid brand header bar,
-   white cards. Each role swaps the brand ramp; nothing else changes.
-   ========================================================================== */
-
 @layer base {
   :root {
-    /* Farm Owner — green (also the landing page default) */
+
     --brand-50: 240 253 244;
     --brand-100: 220 252 231;
     --brand-200: 187 247 208;
@@ -14,7 +8,7 @@
     --brand-600: 22 163 74;
     --brand-700: 21 128 61;
     --brand-900: 20 83 45;
-    /* Tinted full-page wash behind the auth card */
+
     --brand-wash: 222 247 230;
   }
 
@@ -29,7 +23,6 @@
     --brand-wash: 222 247 230;
   }
 
-  /* Farmer — amber/orange */
   [data-role='farmer'] {
     --brand-50: 255 251 235;
     --brand-100: 254 243 199;
@@ -41,7 +34,17 @@
     --brand-wash: 254 243 214;
   }
 
-  /* Buyer — blue */
+  [data-role='admin'] {
+    --brand-50: 248 250 252;
+    --brand-100: 241 245 249;
+    --brand-200: 226 232 240;
+    --brand-500: 100 116 139;
+    --brand-600: 51 65 85;
+    --brand-700: 30 41 59;
+    --brand-900: 15 23 42;
+    --brand-wash: 226 232 240;
+  }
+
   [data-role='buyer'] {
     --brand-50: 239 246 255;
     --brand-100: 219 234 254;
@@ -65,8 +68,6 @@
     @apply font-semibold tracking-[-0.01em];
   }
 
-  /* Numbers carry meaning here — sacks, pesos, slots, wages.
-     Tabular figures keep columns aligned down a list. */
   .num {
     @apply tabular-nums;
   }
@@ -75,7 +76,6 @@
     @apply outline-none ring-2 ring-brand-600 ring-offset-2 rounded-lg;
   }
 
-  /* Strip spinner arrows so a sack field cannot be scrolled to a bad value */
   input[type='number']::-webkit-outer-spin-button,
   input[type='number']::-webkit-inner-spin-button {
     -webkit-appearance: none;

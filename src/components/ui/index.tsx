@@ -1,8 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import type { ReactNode, InputHTMLAttributes, TextareaHTMLAttributes, SelectHTMLAttributes } from 'react'
 
-/* ------------------------------------------------------------------ text --- */
-
 interface FieldProps extends InputHTMLAttributes<HTMLInputElement> {
   label: string
   error?: string | null
@@ -109,34 +107,42 @@ export function Select({ label, error, options, className = '', ...props }: Sele
   const id = useId()
   return (
     <div className={className}>
-      <label className="label" htmlFor={id}>
-        {label}
-      </label>
-      <select id={id} className={`field appearance-none bg-white ${error ? 'field-error' : ''}`} {...props}>
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
+      {label && (
+        <label className="label" htmlFor={id}>
+          {label}
+        </label>
+      )}
+      <div className="relative">
+        <select
+          id={id}
+          className={`field select-arrow appearance-none bg-white pr-10 ${error ? 'field-error' : ''}`}
+          {...props}
+        >
+          {options.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+        <svg
+          aria-hidden
+          className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-soil-400"
+          width="16" height="16" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
+        >
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </div>
       {error && <p className="err">{error}</p>}
     </div>
   )
 }
-
-
-/* -------------------------------------------------------------- phone --- */
 
 interface PhoneProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> {
   label?: string
   error?: string | null
 }
 
-/**
- * Philippine mobile entry with a fixed +63 prefix, so the person types the
- * 10 digits they actually know. normalisePhone() accepts what comes out of
- * this either way — 9171234567 or 09171234567.
- */
 export function PhoneField({ label = 'Phone Number', error, className = '', ...props }: PhoneProps) {
   const id = useId()
   return (
@@ -170,7 +176,6 @@ export function PhoneField({ label = 'Phone Number', error, className = '', ...p
   )
 }
 
-/** Password field styled for the auth card — grey fill, show/hide toggle. */
 export function SoftPasswordField({ label, error, className = '', ...props }: FieldProps) {
   const [shown, setShown] = useState(false)
   const id = useId()
@@ -202,7 +207,6 @@ export function SoftPasswordField({ label, error, className = '', ...props }: Fi
   )
 }
 
-/** Text field styled for the auth card. */
 export function SoftField({ label, error, className = '', ...props }: FieldProps) {
   const id = useId()
   return (
@@ -221,19 +225,12 @@ export function SoftField({ label, error, className = '', ...props }: FieldProps
   )
 }
 
-/* ---------------------------------------------------------------- sacks --- */
-
 interface SackProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'type' | 'step'> {
   label: string
   error?: string | null
   hint?: string
 }
 
-/**
- * The only input used for sack counts anywhere in the app. Locked to whole
- * numbers three ways: step="1", inputMode numeric, and a keypress guard that
- * refuses '.', ',' and 'e' outright so a decimal never even appears on screen.
- */
 export function SackInput({ label, error, hint, className = '', ...props }: SackProps) {
   const id = useId()
   return (
@@ -294,8 +291,6 @@ export function PesoInput({ label, error, hint, className = '', ...props }: Fiel
   )
 }
 
-/* ---------------------------------------------------------------- dialog --- */
-
 export function Dialog({
   open,
   onClose,
@@ -314,59 +309,70 @@ export function Dialog({
   const panel = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (!open) return
+    if (!open) {
+      document.body.style.overflow = ''
+      return
+    }
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
     document.addEventListener('keydown', onKey)
-    document.body.style.overflow = 'hidden'
     panel.current?.querySelector<HTMLElement>('input,select,textarea,button')?.focus()
     return () => {
       document.removeEventListener('keydown', onKey)
-      document.body.style.overflow = ''
     }
   }, [open, onClose])
 
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
+    <div className="fixed inset-0 z-50 w-screen">
       <div
         className="absolute inset-0 bg-soil-900/40 backdrop-blur-[2px]"
         onClick={onClose}
         aria-hidden
       />
-      <div
-        ref={panel}
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        className="relative w-full max-w-md animate-scale-in rounded-t-xl bg-white shadow-2xl
-                   sm:rounded-xl max-h-[92vh] flex flex-col"
-      >
-        <div className="flex items-start justify-between gap-4 border-b border-soil-200 px-5 py-3.5">
-          <div>
-            <h2 className="text-[16px] font-bold">{title}</h2>
-            {description && <p className="mt-0.5 text-[12px] text-soil-600">{description}</p>}
+
+      <div className="relative flex h-full items-end justify-center p-0 sm:items-center sm:p-4">
+        <div
+          ref={panel}
+          role="dialog"
+          aria-modal="true"
+          aria-label={title}
+          className="dialog-panel relative flex w-full max-w-md animate-scale-in flex-col
+                     rounded-t-2xl bg-white shadow-2xl sm:rounded-xl"
+        >
+          <div className="flex shrink-0 items-start justify-between gap-4 rounded-t-2xl border-b border-soil-200 bg-white px-5 py-3.5 sm:rounded-t-xl">
+            <div>
+              <h2 className="text-[16px] font-bold">{title}</h2>
+              {description && <p className="mt-0.5 text-[12px] text-soil-600">{description}</p>}
+            </div>
+            <button
+              onClick={onClose}
+              aria-label="Close"
+              className="-mr-1 rounded-lg p-1.5 text-soil-400 hover:bg-soil-100 hover:text-soil-800"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M18 6 6 18M6 6l12 12" strokeLinecap="round" />
+              </svg>
+            </button>
           </div>
-          <button
-            onClick={onClose}
-            aria-label="Close"
-            className="-mr-1 rounded-lg p-1.5 text-soil-400 hover:bg-soil-100 hover:text-soil-800"
+
+          <div
+            className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain px-5 py-4"
+            style={{ WebkitOverflowScrolling: 'touch' }}
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M18 6 6 18M6 6l12 12" strokeLinecap="round" />
-            </svg>
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
+            {children}
+          </div>
+
         {footer && (
-          <div className="flex gap-2 border-t border-soil-200 px-5 py-3.5 [&>*]:flex-1">{footer}</div>
+          <div className="flex shrink-0 gap-2 border-t border-soil-200 bg-white px-5 py-3.5 [&>*]:flex-1">
+            {footer}
+          </div>
         )}
+        </div>
       </div>
     </div>
   )
 }
-
-/* ---------------------------------------------------------------- pieces --- */
 
 const TONES = {
   green: 'bg-green-100 text-green-700',
@@ -384,7 +390,7 @@ export function Badge({
   children: ReactNode
   tone?: keyof typeof TONES
 }) {
-  return <span className={`chip ${TONES[tone]}`}>{children}</span>
+  return <span className={`chip animate-pop ${TONES[tone]}`}>{children}</span>
 }
 
 export function Stat({
@@ -401,9 +407,11 @@ export function Stat({
   const colour =
     accent === 'green' ? 'text-brand-600' : accent === 'red' ? 'text-red-500' : 'text-soil-900'
   return (
-    <div className="card px-4 py-3.5">
+    <div className="card px-4 py-3.5 transition hover:-translate-y-0.5 hover:shadow-md">
       <p className="text-[12px] font-medium text-soil-600">{label}</p>
-      <p className={`num mt-1 text-[21px] font-bold leading-tight ${colour}`}>{value}</p>
+      <p key={value} className={`num mt-1 animate-count-up text-[21px] font-bold leading-tight ${colour}`}>
+        {value}
+      </p>
       {sub && <p className="mt-0.5 text-[11px] text-soil-400">{sub}</p>}
     </div>
   )
@@ -419,7 +427,7 @@ export function Empty({
   action?: ReactNode
 }) {
   return (
-    <div className="card flex flex-col items-center px-6 py-12 text-center">
+    <div className="card flex animate-fade-up flex-col items-center px-6 py-12 text-center">
       <h3 className="text-[15px] font-bold">{title}</h3>
       <p className="mt-1 max-w-sm text-sm text-soil-600">{body}</p>
       {action && <div className="mt-4">{action}</div>}
@@ -429,9 +437,12 @@ export function Empty({
 
 export function Spinner({ label = 'Loading' }: { label?: string }) {
   return (
-    <div className="flex items-center justify-center gap-2.5 py-16 text-sm text-soil-400">
-      <span className="h-4 w-4 animate-spin rounded-full border-2 border-soil-200 border-t-brand-600" />
-      {label}
+    <div className="flex animate-fade-up flex-col items-center justify-center gap-3 py-16">
+      <span className="relative flex h-9 w-9">
+        <span className="absolute inset-0 animate-ping rounded-full bg-brand-600/25" />
+        <span className="relative h-9 w-9 animate-spin rounded-full border-[3px] border-soil-200 border-t-brand-600" />
+      </span>
+      <span className="text-sm text-soil-400">{label}</span>
     </div>
   )
 }
@@ -471,6 +482,75 @@ export function Search({
         onChange={(e) => onChange(e.target.value)}
         aria-label={placeholder}
       />
+    </div>
+  )
+}
+
+export function ViewToggle({
+  view,
+  onChange,
+}: {
+  view: 'grid' | 'table'
+  onChange(v: 'grid' | 'table'): void
+}) {
+  return (
+    <div className="inline-flex shrink-0 rounded-lg bg-soil-100 p-0.5">
+      {(['grid', 'table'] as const).map((v) => (
+        <button
+          key={v}
+          onClick={() => onChange(v)}
+          aria-pressed={view === v}
+          aria-label={v === 'grid' ? 'Card view' : 'Table view'}
+          className={`rounded-md px-2.5 py-1.5 transition ${
+            view === v ? 'bg-white text-soil-900 shadow-sm' : 'text-soil-400 hover:text-soil-600'
+          }`}
+        >
+          {v === 'grid' ? (
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <rect x="3" y="3" width="7" height="7" rx="1" />
+              <rect x="14" y="3" width="7" height="7" rx="1" />
+              <rect x="3" y="14" width="7" height="7" rx="1" />
+              <rect x="14" y="14" width="7" height="7" rx="1" />
+            </svg>
+          ) : (
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M3 6h18M3 12h18M3 18h18" />
+            </svg>
+          )}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+export function DataTable({
+  headers,
+  children,
+  minWidth = '42rem',
+}: {
+  headers: { label: string; align?: 'left' | 'right' | 'center' }[]
+  children: ReactNode
+  minWidth?: string
+}) {
+  return (
+    <div className="card overflow-x-auto">
+      <table className="w-full text-left text-[13px]" style={{ minWidth }}>
+        <thead className="border-b border-soil-200 bg-soil-50 text-[11px] uppercase tracking-wide text-soil-600">
+          <tr>
+            {headers.map((h, i) => (
+              <th
+                key={i}
+                className={`px-4 py-2.5 font-semibold ${
+                  h.align === 'right' ? 'text-right' : h.align === 'center' ? 'text-center' : ''
+                }`}
+              >
+                {h.label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-soil-200">{children}</tbody>
+      </table>
     </div>
   )
 }

@@ -41,7 +41,6 @@ export default function FarmerJobs() {
   useEffect(() => {
     load()
 
-    // Live job board: a farm owner's new post lands here without a refresh.
     const channel = supabase
       .channel('farmer-job-board')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'job_posts' }, () => load())
@@ -70,7 +69,7 @@ export default function FarmerJobs() {
   if (!jobs) return <Spinner label="Loading the job board" />
 
   return (
-    <div className="space-y-5">
+    <div className="animate-fade-up space-y-5">
       <div>
         <h1 className="text-[22px] font-bold">Find jobs</h1>
         <p className="mt-0.5 text-[13px] text-soil-600">
@@ -178,7 +177,6 @@ export default function FarmerJobs() {
         </div>
       )}
 
-      {/* Details */}
       <Dialog
         open={details !== null}
         onClose={() => setDetails(null)}

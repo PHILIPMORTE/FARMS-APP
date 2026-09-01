@@ -1,10 +1,3 @@
-/* ==========================================================================
-   FARMS — stylesheet entry point
-   Split into: theme.css (role colours + base) and components.css (controls).
-   postcss-import inlines these before Tailwind runs, so @apply and @layer
-   work inside them exactly as they would here.
-   ========================================================================== */
-
 @import './styles/theme.css';
 @import './styles/components.css';
 

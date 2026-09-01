@@ -1,0 +1,314 @@
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { supabase } from '@/lib/supabase'
+import { Badge, Empty, Search, Select, Spinner, Stat } from '@/components/ui'
+import { StageBadge } from '@/components/OrderTimeline'
+import {
+  CROP_EMOJI,
+  ORDER_STAGES,
+  ROLE_LABEL,
+  effectiveStage,
+  isFinishedOrder,
+  STAGE_LABEL,
+  peso,
+  pesoShort,
+  sacks,
+  shortDate,
+  titleCase,
+} from '@/lib/format'
+import { displayPhone } from '@/lib/validation'
+import type { Order, Product, Profile, Role } from '@/lib/types'
+
+export function AdminUsers() {
+  const [rows, setRows] = useState<Profile[] | null>(null)
+  const [query, setQuery] = useState('')
+  const [role, setRole] = useState<'all' | Role>('all')
+
+  useEffect(() => {
+    ;(async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('*')
+        .order('created_at', { ascending: false })
+      setRows((data as Profile[]) ?? [])
+    })()
+  }, [])
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return (rows ?? []).filter((p) => {
+      if (role !== 'all' && p.role !== role) return false
+      if (!q) return true
+      return (
+        p.name.toLowerCase().includes(q) ||
+        p.phone.includes(q) ||
+        (p.company ?? '').toLowerCase().includes(q)
+      )
+    })
+  }, [rows, query, role])
+
+  if (!rows) return <Spinner label="Loading users" />
+
+  return (
+    <div className="animate-fade-up space-y-5">
+      <div>
+        <h1 className="text-[22px] font-bold">Users</h1>
+        <p className="mt-0.5 text-[13px] text-soil-600">
+          Every account on the system. One phone number can hold one account per role.
+        </p>
+      </div>
+
+      <div className="stagger grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {(['owner', 'farmer', 'buyer', 'admin'] as Role[]).map((r) => (
+          <Stat
+            key={r}
+            label={ROLE_LABEL[r]}
+            value={String(rows.filter((p) => p.role === r).length)}
+          />
+        ))}
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-[1fr_12rem]">
+        <Search value={query} onChange={setQuery} placeholder="Search name, phone or company" />
+        <Select
+          label=""
+          value={role}
+          onChange={(e) => setRole(e.target.value as typeof role)}
+          options={[
+            { value: 'all', label: 'All roles' },
+            ...(['owner', 'farmer', 'buyer', 'admin'] as Role[]).map((r) => ({
+              value: r,
+              label: ROLE_LABEL[r],
+            })),
+          ]}
+        />
+      </div>
+
+      {filtered.length === 0 ? (
+        <Empty title="No users match" body="Try a different search or role." />
+      ) : (
+        <div className="card overflow-x-auto">
+          <table className="w-full min-w-[36rem] text-left text-[13px]">
+            <thead className="border-b border-soil-200 bg-soil-50 text-[11px] uppercase tracking-wide text-soil-600">
+              <tr>
+                <th className="px-4 py-2.5 font-semibold">Name</th>
+                <th className="px-4 py-2.5 font-semibold">Role</th>
+                <th className="px-4 py-2.5 font-semibold">Phone</th>
+                <th className="px-4 py-2.5 font-semibold">Joined</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-soil-200">
+              {filtered.map((p) => (
+                <tr key={p.id}>
+                  <td className="px-4 py-2.5 font-semibold">
+                    {p.name || '—'}
+                    {p.company && (
+                      <span className="block text-[12px] font-normal text-soil-400">
+                        {p.company}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <Badge tone={p.role === 'admin' ? 'red' : 'brand'}>{ROLE_LABEL[p.role]}</Badge>
+                  </td>
+                  <td className="num px-4 py-2.5">{displayPhone(p.phone)}</td>
+                  <td className="num px-4 py-2.5 text-soil-600">{shortDate(p.created_at)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export function AdminCatalog() {
+  const [rows, setRows] = useState<Product[] | null>(null)
+  const [query, setQuery] = useState('')
+
+  const load = useCallback(async () => {
+    const { data } = await supabase
+      .from('products')
+      .select('*, farms(name, city, province)')
+      .order('created_at', { ascending: false })
+    setRows((data as unknown as Product[]) ?? [])
+  }, [])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return rows ?? []
+    return (rows ?? []).filter(
+      (p) =>
+        p.variety.toLowerCase().includes(q) ||
+        p.crop.toLowerCase().includes(q) ||
+        (p.farms?.name ?? '').toLowerCase().includes(q),
+    )
+  }, [rows, query])
+
+  if (!rows) return <Spinner label="Loading products" />
+
+  const out = rows.filter((p) => p.quantity === 0).length
+
+  return (
+    <div className="animate-fade-up space-y-5">
+      <div>
+        <h1 className="text-[22px] font-bold">Products &amp; stock</h1>
+        <p className="mt-0.5 text-[13px] text-soil-600">
+          Every listing across all farms. Stock is managed by each farm owner.
+        </p>
+      </div>
+
+      <div className="stagger grid grid-cols-3 gap-3">
+        <Stat label="Listings" value={String(rows.length)} />
+        <Stat label="Out of stock" value={String(out)} accent={out ? 'red' : undefined} />
+        <Stat
+          label="Stock value"
+          value={pesoShort(rows.reduce((s, p) => s + p.quantity * Number(p.price), 0))}
+          accent="green"
+        />
+      </div>
+
+      <Search value={query} onChange={setQuery} placeholder="Search variety, crop or farm" />
+
+      {filtered.length === 0 ? (
+        <Empty title="No products match" body="Try a different search." />
+      ) : (
+        <div className="card overflow-x-auto">
+          <table className="w-full min-w-[42rem] text-left text-[13px]">
+            <thead className="border-b border-soil-200 bg-soil-50 text-[11px] uppercase tracking-wide text-soil-600">
+              <tr>
+                <th className="px-4 py-2.5 font-semibold">Product</th>
+                <th className="px-4 py-2.5 font-semibold">Farm</th>
+                <th className="px-4 py-2.5 text-right font-semibold">Stock</th>
+                <th className="px-4 py-2.5 text-right font-semibold">Price</th>
+                <th className="px-4 py-2.5 font-semibold">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-soil-200">
+              {filtered.map((p) => (
+                <tr key={p.id} className={p.quantity === 0 ? 'bg-red-50/50' : ''}>
+                  <td className="px-4 py-2.5 font-semibold">
+                    {CROP_EMOJI[p.crop]} {p.variety}
+                  </td>
+                  <td className="px-4 py-2.5 text-soil-600">{p.farms?.name ?? '—'}</td>
+                  <td className="num px-4 py-2.5 text-right font-bold">{sacks(p.quantity)}</td>
+                  <td className="num px-4 py-2.5 text-right">{peso(p.price)}</td>
+                  <td className="px-4 py-2.5">
+                    <Badge
+                      tone={p.quantity === 0 ? 'red' : p.quantity <= 5 ? 'amber' : 'green'}
+                    >
+                      {p.quantity === 0 ? 'Out of stock' : p.quantity <= 5 ? 'Low' : 'Available'}
+                    </Badge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+    </div>
+  )
+}
+
+export function AdminOrders() {
+  const [rows, setRows] = useState<Order[] | null>(null)
+  const [stage, setStage] = useState('all')
+
+  const load = useCallback(async () => {
+    const { data } = await supabase
+      .from('orders')
+      .select('*, products(*, farms(name)), profiles!orders_buyer_id_fkey(*)')
+      .order('created_at', { ascending: false })
+    setRows((data as unknown as Order[]) ?? [])
+  }, [])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  const filtered = useMemo(
+    () => (stage === 'all' ? (rows ?? []) : (rows ?? []).filter((o) => effectiveStage(o) === stage)),
+    [rows, stage],
+  )
+
+  if (!rows) return <Spinner label="Loading orders" />
+
+  return (
+    <div className="animate-fade-up space-y-5">
+      <div>
+        <h1 className="text-[22px] font-bold">Orders</h1>
+        <p className="mt-0.5 text-[13px] text-soil-600">Every order placed across all farms.</p>
+      </div>
+
+      <div className="stagger grid grid-cols-3 gap-3">
+        <Stat label="All orders" value={String(rows.length)} />
+        <Stat
+          label="In progress"
+          value={String(rows.filter((o) => !isFinishedOrder(o)).length)}
+        />
+        <Stat
+          label="Sales value"
+          value={pesoShort(
+            rows.filter((o) => effectiveStage(o) !== 'cancelled').reduce((s, o) => s + Number(o.total_price), 0),
+          )}
+          accent="green"
+        />
+      </div>
+
+      <div className="max-w-xs">
+        <Select
+          label="Stage"
+          value={stage}
+          onChange={(e) => setStage(e.target.value)}
+          options={[
+            { value: 'all', label: 'All stages' },
+            ...ORDER_STAGES.map((s) => ({ value: s.stage, label: s.label })),
+            { value: 'cancelled', label: 'Cancelled' },
+          ]}
+        />
+      </div>
+
+      {filtered.length === 0 ? (
+        <Empty title="No orders here" body="Nothing matches this filter." />
+      ) : (
+        <div className="card overflow-x-auto">
+          <table className="w-full min-w-[46rem] text-left text-[13px]">
+            <thead className="border-b border-soil-200 bg-soil-50 text-[11px] uppercase tracking-wide text-soil-600">
+              <tr>
+                <th className="px-4 py-2.5 font-semibold">Date</th>
+                <th className="px-4 py-2.5 font-semibold">Product</th>
+                <th className="px-4 py-2.5 font-semibold">Farm</th>
+                <th className="px-4 py-2.5 font-semibold">Buyer</th>
+                <th className="px-4 py-2.5 text-right font-semibold">Sacks</th>
+                <th className="px-4 py-2.5 text-right font-semibold">Total</th>
+                <th className="px-4 py-2.5 font-semibold">Stage</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-soil-200">
+              {filtered.map((o) => (
+                <tr key={o.id}>
+                  <td className="num px-4 py-2.5 text-soil-600">{shortDate(o.created_at)}</td>
+                  <td className="px-4 py-2.5 font-semibold">{o.products?.variety ?? '—'}</td>
+                  <td className="px-4 py-2.5 text-soil-600">
+                    {(o.products as any)?.farms?.name ?? '—'}
+                  </td>
+                  <td className="px-4 py-2.5 text-soil-600">{o.profiles?.name ?? '—'}</td>
+                  <td className="num px-4 py-2.5 text-right font-bold">{sacks(o.quantity)}</td>
+                  <td className="num px-4 py-2.5 text-right">{peso(o.total_price)}</td>
+                  <td className="px-4 py-2.5">
+                    <StageBadge stage={effectiveStage(o)} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
