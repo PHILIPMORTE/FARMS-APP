@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import { useAuth, isPhoneTakenForRole } from '@/context/AuthContext'
 import { AccountHeader } from '@/components/AccountHeader'
+import { RatingBadge } from '@/components/Ratings'
 import { Field, SectionHeading, Spinner } from '@/components/ui'
 import { friendlyError, normalisePhone, validateName, validatePhone } from '@/lib/validation'
 
@@ -21,6 +22,8 @@ export default function OwnerAccount() {
       farm_name: farm?.name ?? '',
       address: farm?.address ?? '',
       city: farm?.city ?? '',
+      latitude: farm?.latitude != null ? String(farm.latitude) : '',
+      longitude: farm?.longitude != null ? String(farm.longitude) : '',
       province: farm?.province ?? '',
       zip_code: farm?.zip_code ?? '',
     })
@@ -64,6 +67,8 @@ export default function OwnerAccount() {
           name: form.farm_name.trim() || 'My Farm',
           address: form.address.trim(),
           city: form.city.trim(),
+        latitude: form.latitude ? Number(form.latitude) : null,
+        longitude: form.longitude ? Number(form.longitude) : null,
           province: form.province.trim(),
           zip_code: form.zip_code.trim(),
         })

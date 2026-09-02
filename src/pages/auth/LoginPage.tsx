@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
+import { Dialog } from '@/components/ui'
 import { useAuth } from '@/context/AuthContext'
 import { ROLE_HOME, ROLE_LABEL } from '@/lib/format'
 import type { Role } from '@/lib/types'
@@ -29,6 +30,8 @@ export default function LoginPage({ role }: { role: Role }) {
 
   const [tab, setTab] = useState<'signin' | 'register'>('signin')
   const [busy, setBusy] = useState(false)
+  const [agreed, setAgreed] = useState(false)
+  const [privacyOpen, setPrivacyOpen] = useState(false)
   const [errors, setErrors] = useState<Errors>({})
   const [form, setForm] = useState({ name: '', phone: '', password: '', confirm: '' })
 
@@ -72,6 +75,10 @@ export default function LoginPage({ role }: { role: Role }) {
 
   async function onRegister(e: React.FormEvent) {
     e.preventDefault()
+    if (!agreed) {
+      setErrors({ form: 'Please read and agree to the Data Privacy Notice first.' })
+      return
+    }
     const next: Errors = {
       name: validateName(form.name),
       phone: validatePhone(form.phone),
@@ -94,6 +101,10 @@ export default function LoginPage({ role }: { role: Role }) {
   }
 
   async function onGoogle() {
+    if (tab === 'register' && !agreed) {
+      setErrors({ form: 'Please read and agree to the Data Privacy Notice first.' })
+      return
+    }
     setBusy(true)
     try {
       await signInWithGoogle(role)
@@ -234,7 +245,30 @@ export default function LoginPage({ role }: { role: Role }) {
                   onChange={(v) => set('confirm', v)}
                 />
 
-                <button type="submit" className="btn-dark mt-1" disabled={busy}>
+                <div className="rounded-xl border border-soil-200 bg-white/70 p-3.5">
+                  <button
+                    type="button"
+                    onClick={() => setPrivacyOpen(true)}
+                    className="text-left text-[13px] font-semibold text-brand-700 hover:underline"
+                  >
+                    Read the Data Privacy Notice
+                  </button>
+
+                  <label className="mt-2 flex cursor-pointer items-start gap-2.5">
+                    <input
+                      type="checkbox"
+                      checked={agreed}
+                      onChange={(e) => setAgreed(e.target.checked)}
+                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-soil-300 text-brand-600
+                                 focus:ring-2 focus:ring-brand-600/30"
+                    />
+                    <span className="text-[13px] leading-relaxed text-soil-700">
+                      I have read and agree to the Data Privacy Notice.
+                    </span>
+                  </label>
+                </div>
+
+                <button type="submit" className="btn-dark mt-1" disabled={busy || !agreed}>
                   {busy ? 'Creating account…' : 'Create account'}
                 </button>
               </form>
@@ -275,7 +309,50 @@ export default function LoginPage({ role }: { role: Role }) {
           </div>
         </div>
       </div>
+      <PrivacyNotice open={privacyOpen} onClose={() => setPrivacyOpen(false)} />
     </div>
+  )
+}
+
+function PrivacyNotice({ open, onClose }: { open: boolean; onClose(): void }) {
+  if (!open) return null
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title="Data Privacy Notice"
+      description="How FARMS handles your information"
+      footer={
+        <button className="btn-primary" onClick={onClose}>
+          I understand
+        </button>
+      }
+    >
+      <div className="space-y-3 text-[14px] leading-relaxed text-soil-700">
+        <p>
+          FARMS collects your name, mobile number, and a photo of a valid ID so that an
+          administrator can confirm you are a real person before your account is activated. Farm
+          owners also give their farm name and location, and buyers give a delivery address.
+        </p>
+        <p>
+          Your ID photo and selfie are stored privately. Only you and the system administrator can
+          open them, and they are used solely to verify your identity.
+        </p>
+        <p>
+          Other users see only what is needed to deal with you: your name, your mobile number when
+          you have an active order or job together, and your rating. Nobody else sees your ID.
+        </p>
+        <p>
+          Records of orders, work logs, and wages are kept as the shared account of what happened
+          between you and the other party, so both sides can rely on them.
+        </p>
+        <p>
+          You may ask the administrator to correct your details or to remove your account. This
+          system is a student capstone project for Barangay Pagatban and is handled in line with
+          the Data Privacy Act of 2012 (RA 10173).
+        </p>
+      </div>
+    </Dialog>
   )
 }
 

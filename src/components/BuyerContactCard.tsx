@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { RatingBadge } from '@/components/Ratings'
 import { initials, peso, sacks, shortDate } from '@/lib/format'
 import { displayPhone } from '@/lib/validation'
 import type { Profile } from '@/lib/types'
@@ -80,6 +81,12 @@ export function BuyerContactCard({ buyer }: { buyer: Profile | null | undefined 
           Text buyer
         </a>
       </div>
+
+      {buyer && (
+        <div className="mb-2">
+          <RatingBadge profileId={buyer.id} compact />
+        </div>
+      )}
 
       <button
         onClick={() => setHistoryOpen((v) => !v)}

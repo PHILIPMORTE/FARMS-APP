@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Dialog, Empty, Spinner } from '@/components/ui'
+import { RatingBadge } from '@/components/Ratings'
 import { CROP_COLOR, CROP_EMOJI, availableSacks, peso, sacks, titleCase } from '@/lib/format'
 import type { Crop } from '@/lib/types'
 
@@ -24,7 +25,15 @@ interface BestSeller {
 }
 
 interface Profile {
-  farm: { id: string; name: string; city: string | null; province: string | null } | null
+  farm: {
+    id: string
+    name: string
+    city: string | null
+    province: string | null
+    address: string | null
+    latitude: number | null
+    longitude: number | null
+  } | null
   products: FarmProduct[]
   best_sellers: BestSeller[]
   total_sold: number
@@ -69,6 +78,31 @@ export function FarmProfileDialog({
         <Spinner label="Loading the farm" />
       ) : (
         <div className="space-y-5">
+          {data.farm && <RatingBadge profileId={(data as any).owner_id ?? data.farm.id} compact />}
+
+          {data.farm?.latitude != null && data.farm?.longitude != null && (
+            <section>
+              <h3 className="mb-2 text-[13px] font-bold uppercase tracking-wide text-soil-400">
+                Where the farm is
+              </h3>
+              <iframe
+                title={`${data.farm.name} location`}
+                className="h-52 w-full rounded-xl border border-soil-200"
+                loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
+                src={`https://maps.google.com/maps?q=${data.farm.latitude},${data.farm.longitude}&z=15&output=embed`}
+              />
+              <a
+                href={`https://www.google.com/maps/search/?api=1&query=${data.farm.latitude},${data.farm.longitude}`}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-2 block text-center text-[13px] font-semibold text-brand-700 hover:underline"
+              >
+                Open in Google Maps
+              </a>
+            </section>
+          )}
+
           {data.best_sellers.length > 0 && (
             <section>
               <h3 className="mb-2 text-[13px] font-bold uppercase tracking-wide text-soil-400">

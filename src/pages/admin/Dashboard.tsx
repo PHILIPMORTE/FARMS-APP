@@ -313,19 +313,30 @@ function IdPhotoDialog({
   onClose(): void
 }) {
   const [url, setUrl] = useState<string | null>(null)
+  const [selfieUrl, setSelfieUrl] = useState<string | null>(null)
   const [failed, setFailed] = useState(false)
 
   useEffect(() => {
     setUrl(null)
+    setSelfieUrl(null)
     setFailed(false)
-    if (!record?.id_photo_path) return
-    supabase.storage
-      .from('verification-ids')
-      .createSignedUrl(record.id_photo_path, 600)
-      .then(({ data, error }) => {
-        if (error || !data?.signedUrl) setFailed(true)
-        else setUrl(data.signedUrl)
-      })
+    if (record?.id_photo_path) {
+      supabase.storage
+        .from('verification-ids')
+        .createSignedUrl(record.id_photo_path, 600)
+        .then(({ data, error }) => {
+          if (error || !data?.signedUrl) setFailed(true)
+          else setUrl(data.signedUrl)
+        })
+    }
+    if (record?.selfie_path) {
+      supabase.storage
+        .from('verification-ids')
+        .createSignedUrl(record.selfie_path, 600)
+        .then(({ data }) => {
+          if (data?.signedUrl) setSelfieUrl(data.signedUrl)
+        })
+    }
   }, [record?.id])
 
   if (!record) return null
@@ -346,14 +357,50 @@ function IdPhotoDialog({
         <p className="rounded-lg bg-red-50 px-4 py-3 text-[13px] text-red-700">
           The photo could not be loaded. It may have been removed.
         </p>
-      ) : url ? (
-        <img
-          src={url}
-          alt={`ID document for ${record.full_name}`}
-          className="w-full rounded-lg border border-soil-200 bg-soil-50 object-contain"
-        />
+      ) : url || selfieUrl ? (
+        <div className="space-y-4">
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-3">
+            <p className="text-[13px] font-bold text-amber-900">Check before approving</p>
+            <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[13px] leading-relaxed text-amber-800">
+              <li>Is the ID a real government ID, not a photo of a screen or a printout?</li>
+              <li>Does the face on the ID match the face in the selfie?</li>
+              <li>Do the name and date of birth on the ID match what they typed?</li>
+              <li>Is the ID unexpired and readable?</li>
+            </ul>
+          </div>
+
+          {url && (
+            <div>
+              <p className="mb-1.5 text-[12px] font-semibold uppercase tracking-wide text-soil-400">
+                Identity document
+              </p>
+              <img
+                src={url}
+                alt={`ID document for ${record.full_name}`}
+                className="w-full rounded-lg border border-soil-200 bg-soil-50 object-contain"
+              />
+            </div>
+          )}
+
+          {selfieUrl ? (
+            <div>
+              <p className="mb-1.5 text-[12px] font-semibold uppercase tracking-wide text-soil-400">
+                Selfie with ID
+              </p>
+              <img
+                src={selfieUrl}
+                alt={`Selfie for ${record.full_name}`}
+                className="w-full rounded-lg border border-soil-200 bg-soil-50 object-contain"
+              />
+            </div>
+          ) : (
+            <p className="rounded-lg bg-soil-50 px-3.5 py-3 text-[13px] text-soil-600">
+              No selfie was submitted. This account was created before selfies were required.
+            </p>
+          )}
+        </div>
       ) : (
-        <Spinner label="Loading the photo" />
+        <Spinner label="Loading the photos" />
       )}
     </Dialog>
   )

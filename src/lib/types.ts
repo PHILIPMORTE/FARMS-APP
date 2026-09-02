@@ -26,6 +26,9 @@ export interface Profile {
   phone: string
   email: string | null
   avatar_url: string | null
+  privacy_accepted_at: string | null
+  rating_warnings: number
+  restricted: boolean
   company: string | null
   address: string | null
   city: string | null
@@ -39,6 +42,8 @@ export interface Farm {
   owner_id: string
   name: string
   standard_hours?: number
+  latitude?: number | null
+  longitude?: number | null
   address: string | null
   city: string | null
   province: string | null
@@ -202,6 +207,9 @@ export interface OwnerVerification {
   id_type: string
   id_number: string | null
   id_photo_path: string | null
+  selfie_path: string | null
+  latitude: number | null
+  longitude: number | null
   farm_name: string
   farm_address: string
   barangay: string

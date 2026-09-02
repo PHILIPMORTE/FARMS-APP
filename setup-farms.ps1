@@ -4430,6 +4430,449 @@ notify pgrst, 'reload schema';
 '@
 $script:count++
 
+Write-ProjectFile 'supabase\migration-21.sql' @'
+-- ============================================================================
+--  FARMS — MIGRATION 21
+--  Farm location, two-way ratings with abuse protection, privacy consent,
+--  and a selfie for identity verification.
+--  Run in the Supabase SQL Editor. Safe to run more than once.
+-- ============================================================================
+
+-- ---------------------------------------------------------------------------
+-- 1. FARM LOCATION
+-- ---------------------------------------------------------------------------
+alter table public.farms
+  add column if not exists latitude  numeric(10,7),
+  add column if not exists longitude numeric(10,7),
+  add column if not exists location_note text;
+
+-- ---------------------------------------------------------------------------
+-- 2. PRIVACY CONSENT
+-- Recorded per account so it can be shown that consent was given, and when.
+-- ---------------------------------------------------------------------------
+alter table public.profiles
+  add column if not exists privacy_accepted_at timestamptz,
+  add column if not exists selfie_photo_path text;
+
+alter table public.owner_verifications
+  add column if not exists selfie_path text,
+  add column if not exists id_checked boolean not null default false,
+  add column if not exists selfie_matches boolean not null default false;
+
+-- ---------------------------------------------------------------------------
+-- 3. RATINGS
+-- A rating must point at a real completed dealing: an order for buyer/owner
+-- ratings, or an accepted job for worker ratings. One rating per dealing, so
+-- nobody can inflate a score by rating the same person repeatedly.
+-- ---------------------------------------------------------------------------
+do $$ begin
+  create type rating_context as enum ('order','work');
+exception when duplicate_object then null; end $$;
+
+create table if not exists public.ratings (
+  id           uuid primary key default gen_random_uuid(),
+  context      rating_context not null,
+  order_id     uuid references public.orders(id) on delete cascade,
+  job_id       uuid references public.job_posts(id) on delete cascade,
+  rater_id     uuid not null references public.profiles(id) on delete cascade,
+  ratee_id     uuid not null references public.profiles(id) on delete cascade,
+  stars        int not null check (stars between 1 and 5),
+  comment      text,
+  hidden       boolean not null default false,
+  created_at   timestamptz not null default now(),
+  check (rater_id <> ratee_id),
+  check ((context = 'order' and order_id is not null)
+      or (context = 'work'  and job_id is not null))
+);
+
+create unique index if not exists ratings_one_per_order
+  on public.ratings (order_id, rater_id) where order_id is not null;
+
+create unique index if not exists ratings_one_per_job
+  on public.ratings (job_id, rater_id, ratee_id) where job_id is not null;
+
+create index if not exists ratings_ratee_idx on public.ratings(ratee_id) where hidden = false;
+
+alter table public.ratings enable row level security;
+
+drop policy if exists ratings_select on public.ratings;
+create policy ratings_select on public.ratings for select to authenticated
+  using (hidden = false or public.is_admin() or public.is_mine(rater_id));
+
+-- ---------------------------------------------------------------------------
+-- 4. LEAVE A RATING
+-- Checks the dealing really happened and really finished before accepting.
+-- ---------------------------------------------------------------------------
+create or replace function public.rate_order(
+  p_order_id uuid,
+  p_stars int,
+  p_comment text default ''
+)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_order   orders%rowtype;
+  v_product products%rowtype;
+  v_farm    farms%rowtype;
+  v_me      uuid;
+  v_ratee   uuid;
+  v_recent  int;
+begin
+  if p_stars is null or p_stars < 1 or p_stars > 5 then
+    raise exception 'Give a rating between 1 and 5 stars.';
+  end if;
+
+  select * into v_order from orders where id = p_order_id;
+  if not found then raise exception 'Order not found.'; end if;
+  if v_order.stage <> 'completed' then
+    raise exception 'You can only rate once the order is completed.';
+  end if;
+
+  select * into v_product from products where id = v_order.product_id;
+  select * into v_farm from farms where id = v_product.farm_id;
+
+  v_me := public.my_profile_id('buyer');
+  if v_me is not null and v_order.buyer_id = v_me then
+    v_ratee := v_farm.owner_id;
+  else
+    v_me := public.my_profile_id('owner');
+    if v_me is null or v_farm.owner_id <> v_me then
+      raise exception 'You were not part of this order.';
+    end if;
+    v_ratee := v_order.buyer_id;
+  end if;
+
+  if exists (select 1 from profiles where id = v_me and restricted) then
+    raise exception 'Your account is restricted from leaving ratings.';
+  end if;
+
+  select count(*) into v_recent
+    from ratings
+   where rater_id = v_me
+     and created_at > now() - interval '1 hour';
+
+  if v_recent >= 10 then
+    raise exception 'You have left a lot of ratings in a short time. Try again later.';
+  end if;
+
+  insert into ratings (context, order_id, rater_id, ratee_id, stars, comment)
+  values ('order', p_order_id, v_me, v_ratee, p_stars, nullif(trim(p_comment), ''));
+
+  insert into notifications (user_id, message, type, link)
+  values (v_ratee, 'You received a ' || p_stars || '-star rating.', 'general', '/');
+exception
+  when unique_violation then
+    raise exception 'You have already rated this order.';
+end $$;
+
+grant execute on function public.rate_order(uuid, int, text) to authenticated;
+
+create or replace function public.rate_worker(
+  p_job_id uuid,
+  p_farmer_id uuid,
+  p_stars int,
+  p_comment text default ''
+)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_me    uuid := public.my_profile_id('owner');
+  v_job   job_posts%rowtype;
+  v_days  int;
+begin
+  if p_stars is null or p_stars < 1 or p_stars > 5 then
+    raise exception 'Give a rating between 1 and 5 stars.';
+  end if;
+  if v_me is null then
+    raise exception 'Only a farm owner can rate a worker.';
+  end if;
+
+  select * into v_job from job_posts where id = p_job_id;
+  if not found or v_job.owner_id <> v_me then
+    raise exception 'That job is not yours.';
+  end if;
+
+  if not exists (
+    select 1 from job_applications
+     where job_id = p_job_id and farmer_id = p_farmer_id and status = 'accepted'
+  ) then
+    raise exception 'You can only rate a worker you hired.';
+  end if;
+
+  if exists (select 1 from profiles where id = v_me and restricted) then
+    raise exception 'Your account is restricted from leaving ratings.';
+  end if;
+
+  select count(*) into v_days
+    from attendance
+   where job_id = p_job_id and farmer_id = p_farmer_id and time_out is not null;
+
+  if v_days = 0 then
+    raise exception 'This worker has not completed a logged day yet.';
+  end if;
+
+  insert into ratings (context, job_id, rater_id, ratee_id, stars, comment)
+  values ('work', p_job_id, v_me, p_farmer_id, p_stars, nullif(trim(p_comment), ''));
+
+  insert into notifications (user_id, message, type, link)
+  values (p_farmer_id, 'You received a ' || p_stars || '-star rating for your work.',
+          'general', '/farmer/history');
+exception
+  when unique_violation then
+    raise exception 'You have already rated this worker for this job.';
+end $$;
+
+grant execute on function public.rate_worker(uuid, uuid, int, text) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 5. RATING SUMMARY
+-- ---------------------------------------------------------------------------
+create or replace function public.rating_summary(p_profile_id uuid)
+returns json
+language sql stable security definer set search_path = public
+as $$
+  select json_build_object(
+    'average', coalesce(round(avg(stars)::numeric, 2), 0),
+    'total', count(*),
+    'five', count(*) filter (where stars = 5),
+    'four', count(*) filter (where stars = 4),
+    'three', count(*) filter (where stars = 3),
+    'two', count(*) filter (where stars = 2),
+    'one', count(*) filter (where stars = 1)
+  )
+  from ratings
+  where ratee_id = p_profile_id and hidden = false;
+$$;
+
+grant execute on function public.rating_summary(uuid) to authenticated;
+
+create or replace function public.my_pending_ratings()
+returns json
+language sql stable security definer set search_path = public
+as $$
+  select coalesce((
+    select json_agg(json_build_object(
+      'order_id', o.id, 'variety', p.variety, 'farm', f.name,
+      'owner_id', f.owner_id, 'created_at', o.created_at))
+      from orders o
+      join products p on p.id = o.product_id
+      join farms f on f.id = p.farm_id
+     where o.buyer_id = public.my_profile_id('buyer')
+       and o.stage = 'completed'
+       and not exists (
+         select 1 from ratings r
+          where r.order_id = o.id and r.rater_id = public.my_profile_id('buyer'))
+  ), '[]'::json);
+$$;
+
+grant execute on function public.my_pending_ratings() to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 6. ABUSE PROTECTION
+-- An administrator can hide a rating and warn the author. Repeated warnings
+-- are counted on the profile so a pattern is visible rather than anecdotal.
+-- ---------------------------------------------------------------------------
+alter table public.profiles
+  add column if not exists rating_warnings int not null default 0,
+  add column if not exists restricted boolean not null default false;
+
+create or replace function public.moderate_rating(p_rating_id uuid, p_reason text)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_r ratings%rowtype;
+  v_w int;
+begin
+  if not public.is_admin() then
+    raise exception 'Only an administrator can moderate ratings.';
+  end if;
+
+  select * into v_r from ratings where id = p_rating_id for update;
+  if not found then raise exception 'Rating not found.'; end if;
+
+  update ratings set hidden = true where id = p_rating_id;
+
+  update profiles
+     set rating_warnings = rating_warnings + 1
+   where id = v_r.rater_id
+   returning rating_warnings into v_w;
+
+  insert into notifications (user_id, message, type, link)
+  values (v_r.rater_id,
+          'A rating you left was removed: ' || coalesce(nullif(p_reason,''), 'unfair or inappropriate') ||
+          '. Warning ' || v_w || ' of 3. At 3 warnings your account is restricted from rating.',
+          'general', '/');
+
+  if v_w >= 3 then
+    update profiles set restricted = true where id = v_r.rater_id;
+    insert into notifications (user_id, message, type, link)
+    values (v_r.rater_id,
+            'Your account is now restricted from leaving ratings.', 'general', '/');
+  end if;
+end $$;
+
+grant execute on function public.moderate_rating(uuid, text) to authenticated;
+
+notify pgrst, 'reload schema';
+
+'@
+$script:count++
+
+Write-ProjectFile 'supabase\migration-22.sql' @'
+-- ============================================================================
+--  FARMS — MIGRATION 22
+--  The farm location is captured during verification, so the map marker
+--  exists from the moment the account is approved.
+--  Run in the Supabase SQL Editor. Safe to run more than once.
+-- ============================================================================
+
+alter table public.owner_verifications
+  add column if not exists latitude  numeric(10,7),
+  add column if not exists longitude numeric(10,7);
+
+create or replace function public.review_owner_verification(
+  p_verification_id uuid,
+  p_decision verification_status,
+  p_notes text default ''
+)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_row  owner_verifications%rowtype;
+  v_me   uuid := public.my_profile_id('admin');
+  v_role user_role;
+begin
+  if not public.is_admin() then
+    raise exception 'Only an administrator can review verifications.';
+  end if;
+  if p_decision not in ('approved','rejected') then
+    raise exception 'Decision must be approved or rejected.';
+  end if;
+
+  select * into v_row from owner_verifications where id = p_verification_id for update;
+  if not found then raise exception 'Verification request not found.'; end if;
+
+  select role into v_role from profiles where id = v_row.profile_id;
+
+  update owner_verifications
+     set status = p_decision,
+         review_notes = nullif(p_notes,''),
+         reviewed_by = v_me,
+         reviewed_at = now()
+   where id = p_verification_id;
+
+  if p_decision = 'approved' and v_role = 'owner' then
+    if exists (select 1 from farms where owner_id = v_row.profile_id) then
+      update farms
+         set latitude  = coalesce(v_row.latitude, latitude),
+             longitude = coalesce(v_row.longitude, longitude)
+       where owner_id = v_row.profile_id;
+    else
+      insert into farms (owner_id, name, address, city, latitude, longitude)
+      values (v_row.profile_id,
+              coalesce(nullif(v_row.farm_name,''), 'My Farm'),
+              v_row.farm_address, v_row.barangay,
+              v_row.latitude, v_row.longitude);
+    end if;
+  end if;
+
+  insert into notifications (user_id, message, type, link)
+  values (v_row.profile_id,
+          case when p_decision = 'approved'
+               then 'Your account has been verified. You now have full access.'
+               else 'Your verification was not approved.' ||
+                    coalesce(' Reason: ' || nullif(p_notes,''), '')
+          end,
+          'verification', '/');
+end $$;
+
+create or replace function public.farm_profile(p_farm_id uuid)
+returns json
+language sql stable security definer set search_path = public
+as $$
+  select json_build_object(
+    'farm', (select json_build_object(
+               'id', f.id, 'name', f.name, 'city', f.city,
+               'province', f.province, 'address', f.address,
+               'latitude', f.latitude, 'longitude', f.longitude)
+               from farms f where f.id = p_farm_id),
+    'products', coalesce((
+      select json_agg(json_build_object(
+        'id', p.id, 'variety', p.variety, 'crop', p.crop, 'price', p.price,
+        'quantity', p.quantity, 'reserved', p.reserved,
+        'photo_url', p.photo_url, 'status', p.status)
+        order by (p.quantity - p.reserved) <= 0, p.variety)
+        from products p where p.farm_id = p_farm_id), '[]'::json),
+    'best_sellers', coalesce((
+      select json_agg(x) from (
+        select p.variety, p.crop, p.photo_url,
+               sum(o.quantity)::int as sacks_sold,
+               count(*)::int as orders
+          from orders o
+          join products p on p.id = o.product_id
+         where p.farm_id = p_farm_id and o.stage = 'completed'
+         group by p.variety, p.crop, p.photo_url
+         order by sum(o.quantity) desc
+         limit 3
+      ) x), '[]'::json),
+    'total_sold', coalesce((
+      select sum(o.quantity)::int from orders o
+      join products p on p.id = o.product_id
+      where p.farm_id = p_farm_id and o.stage = 'completed'), 0)
+  );
+$$;
+
+notify pgrst, 'reload schema';
+
+'@
+$script:count++
+
+Write-ProjectFile 'supabase\migration-23.sql' @'
+-- ============================================================================
+--  FARMS — MIGRATION 23
+--  Consent to the Data Privacy Notice is recorded on the account itself, so
+--  every route in, including Google sign-in, has to pass through it.
+--  Run in the Supabase SQL Editor. Safe to run more than once.
+-- ============================================================================
+
+create or replace function public.accept_privacy_notice()
+returns void
+language plpgsql security definer set search_path = public
+as $$
+begin
+  update profiles
+     set privacy_accepted_at = now()
+   where user_id = auth.uid()
+     and privacy_accepted_at is null;
+end $$;
+
+grant execute on function public.accept_privacy_notice() to authenticated;
+
+create or replace function public.my_privacy_accepted()
+returns boolean
+language sql stable security definer set search_path = public
+as $$
+  select coalesce(
+    (select privacy_accepted_at is not null
+       from profiles where user_id = auth.uid()
+      order by created_at limit 1),
+    false
+  );
+$$;
+
+grant execute on function public.my_privacy_accepted() to authenticated;
+
+-- Accounts created before this notice existed are treated as not yet consented,
+-- so they are asked the next time they sign in.
+notify pgrst, 'reload schema';
+
+'@
+$script:count++
+
 Write-ProjectFile 'supabase\fix-schedules.sql' @'
 -- ============================================================================
 --  FARMS — DUPLICATE PLANTINGS, THEN THE RULE THAT PREVENTS THEM
@@ -4846,74 +5289,203 @@ $script:count++
 Write-ProjectFile 'DEPLOY.md' @'
 # Deploying FARMS
 
-## 1. Push to GitHub
+Four things your teacher asked for, in order. Budget about an hour, mostly waiting
+for DNS.
 
-```bash
-git init
+---
+
+## Step 1 — Push the code to GitHub
+
+Your repository already exists at `github.com/PHILIPMORTE/FARMS-APP`.
+
+```powershell
+cd "C:\path\to\FARMS APP"
+
 git add .
-git commit -m "FARMS - Philippine farm management system"
+git commit -m "Final build for deployment"
+git push origin main
+```
+
+If this is a fresh folder and git has not been set up yet:
+
+```powershell
+git init
 git branch -M main
-git remote add origin https://github.com/YOUR-USERNAME/farms.git
+git remote add origin https://github.com/PHILIPMORTE/FARMS-APP.git
+git add .
+git commit -m "FARMS system"
 git push -u origin main
 ```
 
-**Check before pushing:** `.env` must NOT appear in `git status`. It holds your
-Supabase keys. `.gitignore` already excludes it.
+**Before you push, confirm `.env` is NOT going up.** It holds your Supabase keys.
 
-## 2. Deploy on Vercel (free)
+```powershell
+git check-ignore .env
+```
 
-1. vercel.com → sign in with GitHub → **Add New Project**
-2. Import the `farms` repository
-3. Framework preset: **Vite** (usually auto-detected)
-4. Expand **Environment Variables** and add both:
+If that prints `.env`, you are safe. If it prints nothing, stop and add `.env`
+to `.gitignore` first.
+
+---
+
+## Step 2 — Claim the Name.com domain
+
+1. Go to `education.github.com/pack` and sign in with your GitHub account.
+2. Find **Name.com** in the list of offers and click **Get access**.
+3. It sends you to Name.com with a coupon applied. Create an account there.
+4. Search for a domain and register it. The free offer covers one year on
+   selected endings, usually `.com.co`, `.me`, or similar. Pick whatever the
+   coupon actually covers.
+
+Suggested names: `farms-pagatban.me`, `farmspagatban.com.co`.
+
+Keep the Name.com login details. Step 3 needs them.
+
+---
+
+## Step 3 — Host the site and point the domain at it
+
+GitHub Pages cannot run this app well because it is a single-page app that also
+needs environment variables at build time. Use **Vercel** instead. It is free,
+connects straight to your GitHub repo, and rebuilds every time you push.
+
+### 3a. Deploy on Vercel
+
+1. Go to `vercel.com` and sign in **with GitHub**.
+2. **Add New → Project**, then import `FARMS-APP`.
+3. Vercel detects Vite on its own. Leave the build settings alone:
+   - Build command: `npm run build`
+   - Output directory: `dist`
+4. Open **Environment Variables** and add both of these, copying the values
+   from your local `.env`:
 
    | Name | Value |
    |---|---|
-   | `VITE_SUPABASE_URL` | your project URL |
-   | `VITE_SUPABASE_ANON_KEY` | your anon key |
+   | `VITE_SUPABASE_URL` | `https://xxxx.supabase.co` |
+   | `VITE_SUPABASE_ANON_KEY` | `eyJhbGci...` |
 
-   Copy these from your local `.env`. The build fails without them.
-5. **Deploy**
+   Miss this and the site loads but nothing connects.
+5. Click **Deploy**. You get a working URL such as `farms-app.vercel.app`.
 
-You get a URL like `https://farms-abc123.vercel.app`.
+Test that URL before going any further.
 
-## 3. Point Supabase and Google at the live URL
+### 3b. Attach your Name.com domain
 
-Sign-in will fail until you do this.
+1. In Vercel: **Project → Settings → Domains → Add**, and enter your domain.
+2. Vercel shows you the DNS records it wants. Usually:
 
-**Supabase → Authentication → URL Configuration**
-- Site URL: `https://your-app.vercel.app`
-- Redirect URLs: add `https://your-app.vercel.app/auth/callback`
-  (keep the localhost entry so local development still works)
+   | Type | Host | Value |
+   |---|---|---|
+   | A | `@` | `76.76.21.21` |
+   | CNAME | `www` | `cname.vercel-dns.com` |
 
-**Google Cloud Console → Credentials → your OAuth client**
-- Authorised JavaScript origins: add `https://your-app.vercel.app`
-- Redirect URIs: unchanged — still the Supabase callback
+   Use the values Vercel actually shows you, not these, in case they change.
+3. In Name.com: **My Domains → your domain → DNS Records**. Delete the parking
+   records Name.com added, then add the two records from Vercel.
+4. Wait. DNS usually takes 10–30 minutes, occasionally a few hours. Vercel
+   issues the HTTPS certificate on its own once the records resolve.
 
-## 4. Test on the live URL
+---
 
-- Register a Farm Owner
-- Sign in with Google
-- Load `https://your-app.vercel.app/owner/dashboard` directly and refresh
-  (this is what `vercel.json` fixes — without it you get a 404)
+## Step 4 — Configure the database for the internet
 
-## Updating later
+Supabase is already cloud-hosted, so the database is on the internet the moment
+you deploy. What it does not yet know is your new address, and sign-in will fail
+until you tell it.
 
-```bash
-git add .
-git commit -m "describe what changed"
-git push
+### 4a. Supabase redirect URLs
+
+**Authentication → URL Configuration**
+
+- **Site URL**: `https://yourdomain.com`
+- **Redirect URLs**: add each of these on its own line
+
+  ```
+  https://yourdomain.com/auth/callback
+  https://www.yourdomain.com/auth/callback
+  https://farms-app.vercel.app/auth/callback
+  http://localhost:5173/auth/callback
+  ```
+
+Keep the localhost one so you can still develop.
+
+### 4b. Google sign-in
+
+In **Google Cloud Console → Credentials → your OAuth client**:
+
+- **Authorized JavaScript origins**: `https://yourdomain.com`
+- **Authorized redirect URIs**: `https://xxxx.supabase.co/auth/v1/callback`
+
+The redirect URI stays pointed at Supabase, not at your domain. That trips
+people up.
+
+### 4c. Confirm the migrations are all applied
+
+In the Supabase SQL Editor, run every file in `supabase/` in order, if you have
+not already:
+
+```
+schema.sql
+update-patch.sql
+migration-2a.sql
+migration-2b.sql
+migration-3.sql  ...  migration-20.sql
 ```
 
-Vercel rebuilds automatically. Database changes still have to be run by hand in
-the Supabase SQL Editor — pushing code never touches your database.
+Then check nothing is missing:
 
-## Note on the anon key
+```sql
+select routine_name
+  from information_schema.routines
+ where routine_schema = 'public'
+ order by routine_name;
+```
 
-`VITE_SUPABASE_ANON_KEY` is meant to be public and ships inside the browser
-bundle. Your data is protected by Row Level Security, not by hiding this key.
-The key that must never be committed or exposed is the **service_role** key —
-this project does not use it anywhere.
+You should see around 30 functions, including `purchase_product`,
+`harvest_schedule`, `add_or_merge_planting` and `farmer_confirm_payment`.
+
+### 4d. Check Row Level Security is on
+
+```sql
+select tablename, rowsecurity
+  from pg_tables
+ where schemaname = 'public'
+ order by tablename;
+```
+
+Every row should show `rowsecurity = true`. This is what stops one farm reading
+another farm's data once the site is public. Do not skip it.
+
+---
+
+## After it is live
+
+Walk through this on the real domain, not localhost:
+
+- [ ] Register a new Farm Owner and get the verification screen
+- [ ] Approve them from the admin panel
+- [ ] Add a planting, then harvest it
+- [ ] List the harvest on the market
+- [ ] Buy it from a Buyer account
+- [ ] Sign in with Google
+- [ ] Open it on a phone
+
+---
+
+## If something breaks
+
+**Blank white page** — environment variables missing in Vercel. Add them and
+redeploy.
+
+**404 when refreshing a page like `/owner/market`** — `vercel.json` was not
+picked up. It is in the repo root; confirm it was pushed.
+
+**Google sign-in returns to a "redirect not allowed" error** — the callback URL
+is not in the Supabase redirect list. Check 4a.
+
+**Site loads but sign-in fails** — check the Supabase URL and anon key in
+Vercel, and confirm the Site URL in 4a matches your domain exactly, including
+whether you use `www`.
 
 '@
 $script:count++
@@ -4979,6 +5551,7 @@ import FarmerHistory from '@/pages/farmer/History'
 import OwnerOrders from '@/pages/owner/Orders'
 import OwnerAttendance from '@/pages/owner/Attendance'
 import { VerificationGate } from '@/components/VerificationGate'
+import { PrivacyGate } from '@/components/PrivacyGate'
 import { AdminDashboard, AdminVerifications } from '@/pages/admin/Dashboard'
 import { AdminUsers, AdminCatalog, AdminOrders } from '@/pages/admin/Manage'
 import { AdminRequests, RequestAdminAccess } from '@/pages/admin/Requests'
@@ -5006,9 +5579,11 @@ export default function App() {
           path="/owner"
           element={
             <ProtectedRoute role="owner">
-              <VerificationGate role="owner">
-                <AppShell role="owner" />
-              </VerificationGate>
+              <PrivacyGate>
+                <VerificationGate role="owner">
+                  <AppShell role="owner" />
+                </VerificationGate>
+              </PrivacyGate>
             </ProtectedRoute>
           }
         >
@@ -5028,9 +5603,11 @@ export default function App() {
           path="/farmer"
           element={
             <ProtectedRoute role="farmer">
-              <VerificationGate role="farmer">
-                <AppShell role="farmer" />
-              </VerificationGate>
+              <PrivacyGate>
+                <VerificationGate role="farmer">
+                  <AppShell role="farmer" />
+                </VerificationGate>
+              </PrivacyGate>
             </ProtectedRoute>
           }
         >
@@ -5047,9 +5624,11 @@ export default function App() {
           path="/buyer"
           element={
             <ProtectedRoute role="buyer">
-              <VerificationGate role="buyer">
-                <AppShell role="buyer" />
-              </VerificationGate>
+              <PrivacyGate>
+                <VerificationGate role="buyer">
+                  <AppShell role="buyer" />
+                </VerificationGate>
+              </PrivacyGate>
             </ProtectedRoute>
           }
         >
@@ -5064,7 +5643,9 @@ export default function App() {
           path="/admin"
           element={
             <ProtectedRoute role="admin">
-              <AppShell role="admin" />
+              <PrivacyGate>
+                <AppShell role="admin" />
+              </PrivacyGate>
             </ProtectedRoute>
           }
         >
@@ -5450,6 +6031,9 @@ export interface Profile {
   phone: string
   email: string | null
   avatar_url: string | null
+  privacy_accepted_at: string | null
+  rating_warnings: number
+  restricted: boolean
   company: string | null
   address: string | null
   city: string | null
@@ -5463,6 +6047,8 @@ export interface Farm {
   owner_id: string
   name: string
   standard_hours?: number
+  latitude?: number | null
+  longitude?: number | null
   address: string | null
   city: string | null
   province: string | null
@@ -5626,6 +6212,9 @@ export interface OwnerVerification {
   id_type: string
   id_number: string | null
   id_photo_path: string | null
+  selfie_path: string | null
+  latitude: number | null
+  longitude: number | null
   farm_name: string
   farm_address: string
   barangay: string
@@ -7625,6 +8214,7 @@ $script:count++
 Write-ProjectFile 'src\components\BuyerContactCard.tsx' @'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { RatingBadge } from '@/components/Ratings'
 import { initials, peso, sacks, shortDate } from '@/lib/format'
 import { displayPhone } from '@/lib/validation'
 import type { Profile } from '@/lib/types'
@@ -7705,6 +8295,12 @@ export function BuyerContactCard({ buyer }: { buyer: Profile | null | undefined 
           Text buyer
         </a>
       </div>
+
+      {buyer && (
+        <div className="mb-2">
+          <RatingBadge profileId={buyer.id} compact />
+        </div>
+      )}
 
       <button
         onClick={() => setHistoryOpen((v) => !v)}
@@ -7901,10 +8497,378 @@ export function BuyerPurchases({ buyerId }: { buyerId: string }) {
 '@
 $script:count++
 
+Write-ProjectFile 'src\components\Ratings.tsx' @'
+import { useEffect, useState } from 'react'
+import { toast } from 'sonner'
+import { supabase } from '@/lib/supabase'
+import { Dialog, Spinner, TextArea } from '@/components/ui'
+import { friendlyError } from '@/lib/validation'
+
+export interface RatingSummary {
+  average: number
+  total: number
+  five: number
+  four: number
+  three: number
+  two: number
+  one: number
+}
+
+export function Stars({ value, size = 16 }: { value: number; size?: number }) {
+  return (
+    <span className="inline-flex items-center gap-0.5" aria-label={`${value} out of 5 stars`}>
+      {[1, 2, 3, 4, 5].map((i) => {
+        const fill = Math.min(Math.max(value - i + 1, 0), 1)
+        return (
+          <span key={i} className="relative inline-block" style={{ width: size, height: size }}>
+            <Star size={size} className="absolute inset-0 text-soil-200" />
+            <span
+              className="absolute inset-0 overflow-hidden"
+              style={{ width: `${fill * 100}%` }}
+              aria-hidden
+            >
+              <Star size={size} className="text-amber-400" />
+            </span>
+          </span>
+        )
+      })}
+    </span>
+  )
+}
+
+function Star({ size, className }: { size: number; className?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className}>
+      <path d="M12 2l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.1 6.1 20.2l1.2-6.6L2.5 9l6.6-.9z" />
+    </svg>
+  )
+}
+
+export function RatingBadge({ profileId, compact }: { profileId: string; compact?: boolean }) {
+  const [data, setData] = useState<RatingSummary | null>(null)
+
+  useEffect(() => {
+    supabase
+      .rpc('rating_summary', { p_profile_id: profileId })
+      .then(({ data: d }) => setData((d as RatingSummary) ?? null))
+  }, [profileId])
+
+  if (!data || data.total === 0) {
+    return compact ? null : (
+      <span className="text-[12px] text-soil-400">No ratings yet</span>
+    )
+  }
+
+  if (compact) {
+    return (
+      <span className="inline-flex items-center gap-1 text-[12px]">
+        <Star size={12} className="text-amber-400" />
+        <span className="num font-bold">{Number(data.average).toFixed(1)}</span>
+        <span className="text-soil-400">({data.total})</span>
+      </span>
+    )
+  }
+
+  return (
+    <div className="rounded-xl border border-soil-200 p-4">
+      <div className="flex items-center gap-4">
+        <div className="text-center">
+          <p className="num text-[30px] font-bold leading-none text-soil-900">
+            {Number(data.average).toFixed(1)}
+          </p>
+          <p className="text-[11px] text-soil-400">out of 5.0</p>
+        </div>
+        <div className="min-w-0 flex-1">
+          <Stars value={Number(data.average)} size={18} />
+          <p className="num mt-1 text-[12px] text-soil-600">
+            {data.total} rating{data.total === 1 ? '' : 's'}
+          </p>
+        </div>
+      </div>
+
+      <dl className="mt-3 space-y-1">
+        {([5, 4, 3, 2, 1] as const).map((n) => {
+          const key = (['one', 'two', 'three', 'four', 'five'] as const)[n - 1]
+          const count = data[key]
+          const pct = data.total ? (count / data.total) * 100 : 0
+          return (
+            <div key={n} className="flex items-center gap-2">
+              <dt className="num w-3 text-[11px] text-soil-500">{n}</dt>
+              <Star size={11} className="text-amber-400" />
+              <dd className="h-1.5 flex-1 overflow-hidden rounded-full bg-soil-100">
+                <span className="block h-full bg-amber-400" style={{ width: `${pct}%` }} />
+              </dd>
+              <span className="num w-6 text-right text-[11px] text-soil-500">{count}</span>
+            </div>
+          )
+        })}
+      </dl>
+    </div>
+  )
+}
+
+export function RateDialog({
+  open,
+  onClose,
+  title,
+  description,
+  onSubmit,
+}: {
+  open: boolean
+  onClose(): void
+  title: string
+  description?: string
+  onSubmit(stars: number, comment: string): Promise<{ error: unknown } | void>
+}) {
+  const [stars, setStars] = useState(0)
+  const [hover, setHover] = useState(0)
+  const [comment, setComment] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    if (open) {
+      setStars(0)
+      setHover(0)
+      setComment('')
+    }
+  }, [open])
+
+  const LABELS = ['', 'Poor', 'Fair', 'Good', 'Very good', 'Excellent']
+
+  async function save() {
+    if (stars === 0) {
+      toast.error('Choose a star rating first.')
+      return
+    }
+    setBusy(true)
+    const res = await onSubmit(stars, comment.trim())
+    setBusy(false)
+    if (res && (res as any).error) {
+      toast.error(friendlyError((res as any).error))
+      return
+    }
+    toast.success('Thank you for rating')
+    onClose()
+  }
+
+  if (!open) return null
+
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title={title}
+      description={description}
+      footer={
+        <>
+          <button className="btn-ghost" onClick={onClose}>
+            Not now
+          </button>
+          <button className="btn-primary" onClick={save} disabled={busy}>
+            {busy ? 'Sending…' : 'Submit rating'}
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <div className="text-center">
+          <div
+            className="inline-flex gap-1.5"
+            onMouseLeave={() => setHover(0)}
+            role="radiogroup"
+            aria-label="Star rating"
+          >
+            {[1, 2, 3, 4, 5].map((n) => (
+              <button
+                key={n}
+                type="button"
+                role="radio"
+                aria-checked={stars === n}
+                aria-label={`${n} star${n === 1 ? '' : 's'}`}
+                onMouseEnter={() => setHover(n)}
+                onClick={() => setStars(n)}
+                className="transition hover:scale-110"
+              >
+                <Star
+                  size={38}
+                  className={
+                    (hover || stars) >= n ? 'text-amber-400' : 'text-soil-200'
+                  }
+                />
+              </button>
+            ))}
+          </div>
+          <p className="mt-1.5 h-5 text-[14px] font-semibold text-soil-700">
+            {LABELS[hover || stars]}
+          </p>
+        </div>
+
+        <TextArea
+          label="Comment (optional)"
+          max={300}
+          placeholder="What was the transaction like?"
+          value={comment}
+          onChange={(e) => setComment(e.target.value)}
+        />
+
+        <p className="rounded-lg bg-soil-50 px-3.5 py-2.5 text-[12px] leading-relaxed text-soil-600">
+          Rate honestly based on your real dealing. Unfair or abusive ratings can be removed by an
+          administrator, and repeated cases restrict your account from rating.
+        </p>
+      </div>
+    </Dialog>
+  )
+}
+
+export function RatingPanel({ profileId }: { profileId: string }) {
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const t = setTimeout(() => setLoading(false), 0)
+    return () => clearTimeout(t)
+  }, [])
+
+  if (loading) return <Spinner label="Loading ratings" />
+  return <RatingBadge profileId={profileId} />
+}
+
+'@
+$script:count++
+
+Write-ProjectFile 'src\components\PrivacyGate.tsx' @'
+import { useCallback, useEffect, useState } from 'react'
+import { toast } from 'sonner'
+import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/context/AuthContext'
+import { Spinner } from '@/components/ui'
+import { friendlyError } from '@/lib/validation'
+import type { ReactNode } from 'react'
+
+export function PrivacyGate({ children }: { children: ReactNode }) {
+  const { profile, signOut } = useAuth()
+  const [accepted, setAccepted] = useState<boolean | null>(null)
+  const [checked, setChecked] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  const load = useCallback(async () => {
+    const { data } = await supabase.rpc('my_privacy_accepted')
+    setAccepted(Boolean(data))
+  }, [profile?.id])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  if (accepted === null) return <Spinner label="Checking your account" />
+  if (accepted) return <>{children}</>
+
+  async function accept() {
+    if (!checked) {
+      toast.error('Please tick the box to continue.')
+      return
+    }
+    setBusy(true)
+    const { error } = await supabase.rpc('accept_privacy_notice')
+    setBusy(false)
+    if (error) {
+      toast.error(friendlyError(error))
+      return
+    }
+    setAccepted(true)
+  }
+
+  return (
+    <div className="auth-wash flex min-h-screen items-center justify-center px-5 py-10">
+      <div className="relative z-10 w-full max-w-lg">
+        <div className="auth-card animate-fade-up rounded-2xl p-6 sm:p-8">
+          <div className="text-center">
+            <span className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-white text-brand-700 shadow-sm">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 3l8 3.5v5c0 5-3.4 9.3-8 10.5C7.4 20.8 4 16.5 4 11.5v-5z" />
+                <path d="M9 12l2.2 2.2L15.5 10" />
+              </svg>
+            </span>
+            <h1 className="mt-4 text-[22px] font-bold">Data Privacy Notice</h1>
+            <p className="mt-1 text-[13px] text-soil-600">
+              Please read this before using FARMS. You cannot continue without agreeing.
+            </p>
+          </div>
+
+          <div className="mt-5 max-h-[42vh] space-y-3 overflow-y-auto rounded-xl bg-white/70 p-4 text-[14px] leading-relaxed text-soil-700">
+            <p className="font-semibold text-soil-900">What we collect</p>
+            <p>
+              Your name, mobile number, and a photo of a valid government ID together with a selfie
+              holding that ID. Farm owners also give their farm name, address, and map location.
+              Buyers give a delivery address. Farmers record the hours they work.
+            </p>
+
+            <p className="font-semibold text-soil-900">Why we collect it</p>
+            <p>
+              An administrator checks your ID and selfie to confirm you are a real person before
+              your account is activated. This protects everyone from fake accounts. The rest is used
+              to run orders, jobs, and wages between you and the people you deal with.
+            </p>
+
+            <p className="font-semibold text-soil-900">Who can see it</p>
+            <p>
+              Your ID photo and selfie are stored privately. Only you and the system administrator
+              can open them. Other users see only your name, your rating, and your mobile number
+              when you have an active order or job together. Farm locations are shown to buyers so
+              they can find the farm.
+            </p>
+
+            <p className="font-semibold text-soil-900">How long we keep it</p>
+            <p>
+              Records of orders, work logs, and wages are kept as the shared account of what
+              happened between both parties, so either side can rely on them later.
+            </p>
+
+            <p className="font-semibold text-soil-900">Your rights</p>
+            <p>
+              You may ask the administrator to correct your details or remove your account. This
+              system is a student capstone project for Barangay Pagatban, Bayawan City, and personal
+              information is handled in line with the Data Privacy Act of 2012 (RA 10173).
+            </p>
+          </div>
+
+          <label className="mt-4 flex cursor-pointer items-start gap-2.5 rounded-xl border border-soil-200 bg-white p-3.5">
+            <input
+              type="checkbox"
+              checked={checked}
+              onChange={(e) => setChecked(e.target.checked)}
+              className="mt-0.5 h-4 w-4 shrink-0 rounded border-soil-300 text-brand-600 focus:ring-2 focus:ring-brand-600/30"
+            />
+            <span className="text-[14px] font-medium leading-relaxed text-soil-800">
+              I have read and agree to the Data Privacy Notice.
+            </span>
+          </label>
+
+          <button className="btn-primary mt-4 w-full py-3" onClick={accept} disabled={!checked || busy}>
+            {busy ? 'Saving…' : 'Agree and continue'}
+          </button>
+
+          <button
+            className="mt-2 w-full py-2 text-[13px] font-medium text-soil-500 hover:text-soil-800"
+            onClick={async () => {
+              await signOut()
+            }}
+          >
+            Disagree and sign out
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+'@
+$script:count++
+
 Write-ProjectFile 'src\components\FarmProfileDialog.tsx' @'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Dialog, Empty, Spinner } from '@/components/ui'
+import { RatingBadge } from '@/components/Ratings'
 import { CROP_COLOR, CROP_EMOJI, availableSacks, peso, sacks, titleCase } from '@/lib/format'
 import type { Crop } from '@/lib/types'
 
@@ -7928,7 +8892,15 @@ interface BestSeller {
 }
 
 interface Profile {
-  farm: { id: string; name: string; city: string | null; province: string | null } | null
+  farm: {
+    id: string
+    name: string
+    city: string | null
+    province: string | null
+    address: string | null
+    latitude: number | null
+    longitude: number | null
+  } | null
   products: FarmProduct[]
   best_sellers: BestSeller[]
   total_sold: number
@@ -7973,6 +8945,31 @@ export function FarmProfileDialog({
         <Spinner label="Loading the farm" />
       ) : (
         <div className="space-y-5">
+          {data.farm && <RatingBadge profileId={(data as any).owner_id ?? data.farm.id} compact />}
+
+          {data.farm?.latitude != null && data.farm?.longitude != null && (
+            <section>
+              <h3 className="mb-2 text-[13px] font-bold uppercase tracking-wide text-soil-400">
+                Where the farm is
+              </h3>
+              <iframe
+                title={`${data.farm.name} location`}
+                className="h-52 w-full rounded-xl border border-soil-200"
+                loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
+                src={`https://maps.google.com/maps?q=${data.farm.latitude},${data.farm.longitude}&z=15&output=embed`}
+              />
+              <a
+                href={`https://www.google.com/maps/search/?api=1&query=${data.farm.latitude},${data.farm.longitude}`}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-2 block text-center text-[13px] font-semibold text-brand-700 hover:underline"
+              >
+                Open in Google Maps
+              </a>
+            </section>
+          )}
+
           {data.best_sellers.length > 0 && (
             <section>
               <h3 className="mb-2 text-[13px] font-bold uppercase tracking-wide text-soil-400">
@@ -8505,13 +9502,25 @@ function VerificationScreen({
     farm_address: '',
     barangay: 'Pagatban, Bayawan City',
     farm_size_ha: '',
+    latitude: '',
+    longitude: '',
     notes: '',
   })
   const [errors, setErrors] = useState<Record<string, string | null>>({})
   const [busy, setBusy] = useState(false)
   const [idFile, setIdFile] = useState<File | null>(null)
+  const [selfie, setSelfie] = useState<File | null>(null)
+  const [selfiePreview, setSelfiePreview] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!selfie) return
+    const url = URL.createObjectURL(selfie)
+    setSelfiePreview(url)
+    return () => URL.revokeObjectURL(url)
+  }, [selfie])
   const [preview, setPreview] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [locating, setLocating] = useState(false)
 
   useEffect(() => {
     if (!idFile) return
@@ -8540,6 +9549,8 @@ function VerificationScreen({
       farm_address: record?.farm_address || '',
       barangay: record?.barangay || 'Pagatban, Bayawan City',
       farm_size_ha: record?.farm_size_ha ? String(record.farm_size_ha) : '',
+      latitude: record?.latitude != null ? String(record.latitude) : '',
+      longitude: record?.longitude != null ? String(record.longitude) : '',
       notes: record?.notes || '',
     }))
   }, [record?.id, profile?.id])
@@ -8575,7 +9586,11 @@ function VerificationScreen({
     const next = {
       full_name: validateRequired(form.full_name, 'Full name'),
       id_photo: idFile || record?.id_photo_path ? null : 'Upload a photo of your ID.',
+      selfie: selfie || record?.selfie_path ? null : 'Take a photo of yourself holding your ID.',
       farm_name: role === 'owner' ? validateRequired(form.farm_name, 'Farm name') : null,
+      latitude:
+        role === 'owner' && !form.latitude ? 'Pin your farm so buyers can find it.' : null,
+      longitude: role === 'owner' && !form.longitude ? 'Longitude is missing.' : null,
       farm_address: role === 'owner' ? validateRequired(form.farm_address, 'Farm address') : null,
       barangay: validateRequired(form.barangay, 'Barangay'),
     }
@@ -8604,6 +9619,25 @@ function VerificationScreen({
       photoPath = path
     }
 
+    let selfiePath = record?.selfie_path ?? null
+    if (selfie) {
+      setUploading(true)
+      const { data: session } = await supabase.auth.getSession()
+      const uid = session.session?.user.id
+      const ext = selfie.name.split('.').pop()?.toLowerCase() || 'jpg'
+      const path = `${uid}/selfie-${Date.now()}.${ext}`
+      const { error: upError } = await supabase.storage
+        .from('verification-ids')
+        .upload(path, selfie, { upsert: true, contentType: selfie.type })
+      setUploading(false)
+      if (upError) {
+        setBusy(false)
+        toast.error(`Selfie upload failed: ${upError.message}`)
+        return
+      }
+      selfiePath = path
+    }
+
     const payload = {
       profile_id: profile.id,
       role,
@@ -8612,9 +9646,12 @@ function VerificationScreen({
       id_type: form.id_type,
       id_number: null,
       id_photo_path: photoPath,
+      selfie_path: selfiePath,
       farm_name: form.farm_name.trim(),
       farm_address: form.farm_address.trim(),
       barangay: form.barangay.trim(),
+      latitude: form.latitude ? Number(form.latitude) : null,
+      longitude: form.longitude ? Number(form.longitude) : null,
       farm_size_ha: form.farm_size_ha ? Number(form.farm_size_ha) : null,
       notes: form.notes.trim() || null,
       review_notes: null,
@@ -8735,6 +9772,68 @@ function VerificationScreen({
               />
               {errors.id_photo && <p className="err">{errors.id_photo}</p>}
             </div>
+
+            <div className="sm:col-span-2">
+              <label className="label" htmlFor="selfie">
+                Photo of yourself holding your ID
+              </label>
+
+              {selfiePreview ? (
+                <div className="overflow-hidden rounded-xl border border-soil-200">
+                  <img
+                    src={selfiePreview}
+                    alt="You holding your ID"
+                    className="max-h-64 w-full bg-soil-50 object-contain"
+                  />
+                  <div className="flex items-center justify-between gap-3 border-t border-soil-200 px-3 py-2">
+                    <span className="text-[12px] text-soil-600">{selfie?.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => setSelfie(null)}
+                      className="text-[13px] font-semibold text-red-600 hover:underline"
+                    >
+                      Retake
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <label
+                  htmlFor="selfie"
+                  className={`flex cursor-pointer flex-col items-center gap-1.5 rounded-xl border-2 border-dashed
+                              px-4 py-8 text-center transition hover:bg-soil-50 ${
+                                errors.selfie ? 'border-red-400' : 'border-soil-200'
+                              }`}
+                >
+                  <span className="text-3xl" aria-hidden>
+                    🤳
+                  </span>
+                  <span className="text-[14px] font-semibold">Take a selfie with your ID</span>
+                  <span className="text-[12px] leading-relaxed text-soil-400">
+                    Hold your ID next to your face so the administrator can see the person on the ID
+                    is you. Good light, no sunglasses or hat.
+                  </span>
+                </label>
+              )}
+
+              <input
+                id="selfie"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                capture="user"
+                className="sr-only"
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  if (!f) return
+                  if (f.size > 5 * 1024 * 1024) {
+                    setErrors((x) => ({ ...x, selfie: 'That photo is over 5 MB.' }))
+                    return
+                  }
+                  setSelfie(f)
+                  setErrors((x) => ({ ...x, selfie: null }))
+                }}
+              />
+              {errors.selfie && <p className="err">{errors.selfie}</p>}
+            </div>
           </div>
         </section>
 
@@ -8762,6 +9861,82 @@ function VerificationScreen({
               error={errors.barangay}
               onChange={(e) => set('barangay', e.target.value)}
             />
+            <div className="sm:col-span-2">
+              <label className="label">Pin your farm on the map</label>
+              <div className="rounded-xl border border-soil-200 p-4">
+                <p className="text-[13px] leading-relaxed text-soil-600">
+                  Buyers see this marker so they can find you. Stand at your farm and tap the button
+                  below, or open Google Maps, long-press your farm, and copy the two numbers.
+                </p>
+
+                <button
+                  type="button"
+                  className="btn-ghost mt-3 w-full py-2.5 text-[13px]"
+                  disabled={locating}
+                  onClick={() => {
+                    if (!navigator.geolocation) {
+                      toast.error('This device cannot share its location.')
+                      return
+                    }
+                    setLocating(true)
+                    navigator.geolocation.getCurrentPosition(
+                      (pos) => {
+                        set('latitude', pos.coords.latitude.toFixed(6))
+                        set('longitude', pos.coords.longitude.toFixed(6))
+                        setLocating(false)
+                        toast.success('Location captured')
+                      },
+                      () => {
+                        setLocating(false)
+                        toast.error('Could not read your location. Type the numbers instead.')
+                      },
+                      { enableHighAccuracy: true, timeout: 10000 },
+                    )
+                  }}
+                >
+                  {locating ? 'Finding you…' : '📍 Use my current location'}
+                </button>
+
+                <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                  <Field
+                    label="Latitude"
+                    placeholder="9.3644"
+                    inputMode="decimal"
+                    value={form.latitude}
+                    error={errors.latitude}
+                    onChange={(e) => set('latitude', e.target.value)}
+                  />
+                  <Field
+                    label="Longitude"
+                    placeholder="122.8064"
+                    inputMode="decimal"
+                    value={form.longitude}
+                    error={errors.longitude}
+                    onChange={(e) => set('longitude', e.target.value)}
+                  />
+                </div>
+
+                {form.latitude && form.longitude ? (
+                  <>
+                    <iframe
+                      title="Your farm location"
+                      className="mt-3 h-56 w-full rounded-lg border border-soil-200"
+                      loading="lazy"
+                      referrerPolicy="no-referrer-when-downgrade"
+                      src={`https://maps.google.com/maps?q=${form.latitude},${form.longitude}&z=15&output=embed`}
+                    />
+                    <p className="mt-2 text-center text-[12px] text-soil-500">
+                      Check the marker sits on your farm. Adjust the numbers if it does not.
+                    </p>
+                  </>
+                ) : (
+                  <p className="mt-3 rounded-lg bg-soil-50 px-3.5 py-3 text-center text-[13px] text-soil-500">
+                    No location set yet
+                  </p>
+                )}
+              </div>
+            </div>
+
             <Field
               label="Farm size (hectares)"
               type="number"
@@ -9195,6 +10370,7 @@ Write-ProjectFile 'src\pages\auth\LoginPage.tsx' @'
 import { useEffect, useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
+import { Dialog } from '@/components/ui'
 import { useAuth } from '@/context/AuthContext'
 import { ROLE_HOME, ROLE_LABEL } from '@/lib/format'
 import type { Role } from '@/lib/types'
@@ -9223,6 +10399,8 @@ export default function LoginPage({ role }: { role: Role }) {
 
   const [tab, setTab] = useState<'signin' | 'register'>('signin')
   const [busy, setBusy] = useState(false)
+  const [agreed, setAgreed] = useState(false)
+  const [privacyOpen, setPrivacyOpen] = useState(false)
   const [errors, setErrors] = useState<Errors>({})
   const [form, setForm] = useState({ name: '', phone: '', password: '', confirm: '' })
 
@@ -9266,6 +10444,10 @@ export default function LoginPage({ role }: { role: Role }) {
 
   async function onRegister(e: React.FormEvent) {
     e.preventDefault()
+    if (!agreed) {
+      setErrors({ form: 'Please read and agree to the Data Privacy Notice first.' })
+      return
+    }
     const next: Errors = {
       name: validateName(form.name),
       phone: validatePhone(form.phone),
@@ -9288,6 +10470,10 @@ export default function LoginPage({ role }: { role: Role }) {
   }
 
   async function onGoogle() {
+    if (tab === 'register' && !agreed) {
+      setErrors({ form: 'Please read and agree to the Data Privacy Notice first.' })
+      return
+    }
     setBusy(true)
     try {
       await signInWithGoogle(role)
@@ -9428,7 +10614,30 @@ export default function LoginPage({ role }: { role: Role }) {
                   onChange={(v) => set('confirm', v)}
                 />
 
-                <button type="submit" className="btn-dark mt-1" disabled={busy}>
+                <div className="rounded-xl border border-soil-200 bg-white/70 p-3.5">
+                  <button
+                    type="button"
+                    onClick={() => setPrivacyOpen(true)}
+                    className="text-left text-[13px] font-semibold text-brand-700 hover:underline"
+                  >
+                    Read the Data Privacy Notice
+                  </button>
+
+                  <label className="mt-2 flex cursor-pointer items-start gap-2.5">
+                    <input
+                      type="checkbox"
+                      checked={agreed}
+                      onChange={(e) => setAgreed(e.target.checked)}
+                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-soil-300 text-brand-600
+                                 focus:ring-2 focus:ring-brand-600/30"
+                    />
+                    <span className="text-[13px] leading-relaxed text-soil-700">
+                      I have read and agree to the Data Privacy Notice.
+                    </span>
+                  </label>
+                </div>
+
+                <button type="submit" className="btn-dark mt-1" disabled={busy || !agreed}>
                   {busy ? 'Creating account…' : 'Create account'}
                 </button>
               </form>
@@ -9469,7 +10678,50 @@ export default function LoginPage({ role }: { role: Role }) {
           </div>
         </div>
       </div>
+      <PrivacyNotice open={privacyOpen} onClose={() => setPrivacyOpen(false)} />
     </div>
+  )
+}
+
+function PrivacyNotice({ open, onClose }: { open: boolean; onClose(): void }) {
+  if (!open) return null
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title="Data Privacy Notice"
+      description="How FARMS handles your information"
+      footer={
+        <button className="btn-primary" onClick={onClose}>
+          I understand
+        </button>
+      }
+    >
+      <div className="space-y-3 text-[14px] leading-relaxed text-soil-700">
+        <p>
+          FARMS collects your name, mobile number, and a photo of a valid ID so that an
+          administrator can confirm you are a real person before your account is activated. Farm
+          owners also give their farm name and location, and buyers give a delivery address.
+        </p>
+        <p>
+          Your ID photo and selfie are stored privately. Only you and the system administrator can
+          open them, and they are used solely to verify your identity.
+        </p>
+        <p>
+          Other users see only what is needed to deal with you: your name, your mobile number when
+          you have an active order or job together, and your rating. Nobody else sees your ID.
+        </p>
+        <p>
+          Records of orders, work logs, and wages are kept as the shared account of what happened
+          between you and the other party, so both sides can rely on them.
+        </p>
+        <p>
+          You may ask the administrator to correct your details or to remove your account. This
+          system is a student capstone project for Barangay Pagatban and is handled in line with
+          the Data Privacy Act of 2012 (RA 10173).
+        </p>
+      </div>
+    </Dialog>
   )
 }
 
@@ -13516,6 +14768,7 @@ import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import { useAuth, isPhoneTakenForRole } from '@/context/AuthContext'
 import { AccountHeader } from '@/components/AccountHeader'
+import { RatingBadge } from '@/components/Ratings'
 import { Field, SectionHeading, Spinner } from '@/components/ui'
 import { friendlyError, normalisePhone, validateName, validatePhone } from '@/lib/validation'
 
@@ -13534,6 +14787,8 @@ export default function OwnerAccount() {
       farm_name: farm?.name ?? '',
       address: farm?.address ?? '',
       city: farm?.city ?? '',
+      latitude: farm?.latitude != null ? String(farm.latitude) : '',
+      longitude: farm?.longitude != null ? String(farm.longitude) : '',
       province: farm?.province ?? '',
       zip_code: farm?.zip_code ?? '',
     })
@@ -13577,6 +14832,8 @@ export default function OwnerAccount() {
           name: form.farm_name.trim() || 'My Farm',
           address: form.address.trim(),
           city: form.city.trim(),
+        latitude: form.latitude ? Number(form.latitude) : null,
+        longitude: form.longitude ? Number(form.longitude) : null,
           province: form.province.trim(),
           zip_code: form.zip_code.trim(),
         })
@@ -14906,19 +16163,30 @@ function IdPhotoDialog({
   onClose(): void
 }) {
   const [url, setUrl] = useState<string | null>(null)
+  const [selfieUrl, setSelfieUrl] = useState<string | null>(null)
   const [failed, setFailed] = useState(false)
 
   useEffect(() => {
     setUrl(null)
+    setSelfieUrl(null)
     setFailed(false)
-    if (!record?.id_photo_path) return
-    supabase.storage
-      .from('verification-ids')
-      .createSignedUrl(record.id_photo_path, 600)
-      .then(({ data, error }) => {
-        if (error || !data?.signedUrl) setFailed(true)
-        else setUrl(data.signedUrl)
-      })
+    if (record?.id_photo_path) {
+      supabase.storage
+        .from('verification-ids')
+        .createSignedUrl(record.id_photo_path, 600)
+        .then(({ data, error }) => {
+          if (error || !data?.signedUrl) setFailed(true)
+          else setUrl(data.signedUrl)
+        })
+    }
+    if (record?.selfie_path) {
+      supabase.storage
+        .from('verification-ids')
+        .createSignedUrl(record.selfie_path, 600)
+        .then(({ data }) => {
+          if (data?.signedUrl) setSelfieUrl(data.signedUrl)
+        })
+    }
   }, [record?.id])
 
   if (!record) return null
@@ -14939,14 +16207,50 @@ function IdPhotoDialog({
         <p className="rounded-lg bg-red-50 px-4 py-3 text-[13px] text-red-700">
           The photo could not be loaded. It may have been removed.
         </p>
-      ) : url ? (
-        <img
-          src={url}
-          alt={`ID document for ${record.full_name}`}
-          className="w-full rounded-lg border border-soil-200 bg-soil-50 object-contain"
-        />
+      ) : url || selfieUrl ? (
+        <div className="space-y-4">
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-3">
+            <p className="text-[13px] font-bold text-amber-900">Check before approving</p>
+            <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[13px] leading-relaxed text-amber-800">
+              <li>Is the ID a real government ID, not a photo of a screen or a printout?</li>
+              <li>Does the face on the ID match the face in the selfie?</li>
+              <li>Do the name and date of birth on the ID match what they typed?</li>
+              <li>Is the ID unexpired and readable?</li>
+            </ul>
+          </div>
+
+          {url && (
+            <div>
+              <p className="mb-1.5 text-[12px] font-semibold uppercase tracking-wide text-soil-400">
+                Identity document
+              </p>
+              <img
+                src={url}
+                alt={`ID document for ${record.full_name}`}
+                className="w-full rounded-lg border border-soil-200 bg-soil-50 object-contain"
+              />
+            </div>
+          )}
+
+          {selfieUrl ? (
+            <div>
+              <p className="mb-1.5 text-[12px] font-semibold uppercase tracking-wide text-soil-400">
+                Selfie with ID
+              </p>
+              <img
+                src={selfieUrl}
+                alt={`Selfie for ${record.full_name}`}
+                className="w-full rounded-lg border border-soil-200 bg-soil-50 object-contain"
+              />
+            </div>
+          ) : (
+            <p className="rounded-lg bg-soil-50 px-3.5 py-3 text-[13px] text-soil-600">
+              No selfie was submitted. This account was created before selfies were required.
+            </p>
+          )}
+        </div>
       ) : (
-        <Spinner label="Loading the photo" />
+        <Spinner label="Loading the photos" />
       )}
     </Dialog>
   )
@@ -17718,6 +19022,7 @@ Write-ProjectFile 'src\pages\buyer\Orders.tsx' @'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
+import { RateDialog } from '@/components/Ratings'
 import { friendlyError } from '@/lib/validation'
 import { useAuth } from '@/context/AuthContext'
 import { Badge, Dialog, Empty, Spinner, Stat, TextArea } from '@/components/ui'
@@ -17740,6 +19045,7 @@ export default function BuyerOrders() {
   const [events, setEvents] = useState<Record<string, OrderEvent[]>>({})
   const [tab, setTab] = useState<string>('all')
   const [cancelling, setCancelling] = useState<Order | null>(null)
+  const [rating, setRating] = useState<Order | null>(null)
   const [reason, setReason] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -17938,6 +19244,15 @@ export default function BuyerOrders() {
                   />
                 </div>
 
+                {effectiveStage(o) === 'completed' && (
+                  <button
+                    className="btn-ghost w-full py-2 text-[13px]"
+                    onClick={() => setRating(o)}
+                  >
+                    ⭐ Rate this farm
+                  </button>
+                )}
+
                 {['placed', 'confirmed'].includes(effectiveStage(o)) && (
                   <button
                     className="btn-ghost w-full py-2 text-[13px] text-red-600 hover:bg-red-50"
@@ -17954,6 +19269,20 @@ export default function BuyerOrders() {
           })}
         </div>
       )}
+      <RateDialog
+        open={rating !== null}
+        onClose={() => setRating(null)}
+        title="Rate this farm"
+        description={rating?.products?.farms?.name ?? undefined}
+        onSubmit={async (stars, comment) =>
+          await supabase.rpc('rate_order', {
+            p_order_id: rating!.id,
+            p_stars: stars,
+            p_comment: comment,
+          })
+        }
+      />
+
       <Dialog
         open={cancelling !== null}
         onClose={() => setCancelling(null)}

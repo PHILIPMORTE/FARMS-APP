@@ -28,6 +28,7 @@ import FarmerHistory from '@/pages/farmer/History'
 import OwnerOrders from '@/pages/owner/Orders'
 import OwnerAttendance from '@/pages/owner/Attendance'
 import { VerificationGate } from '@/components/VerificationGate'
+import { PrivacyGate } from '@/components/PrivacyGate'
 import { AdminDashboard, AdminVerifications } from '@/pages/admin/Dashboard'
 import { AdminUsers, AdminCatalog, AdminOrders } from '@/pages/admin/Manage'
 import { AdminRequests, RequestAdminAccess } from '@/pages/admin/Requests'
@@ -55,9 +56,11 @@ export default function App() {
           path="/owner"
           element={
             <ProtectedRoute role="owner">
-              <VerificationGate role="owner">
-                <AppShell role="owner" />
-              </VerificationGate>
+              <PrivacyGate>
+                <VerificationGate role="owner">
+                  <AppShell role="owner" />
+                </VerificationGate>
+              </PrivacyGate>
             </ProtectedRoute>
           }
         >
@@ -77,9 +80,11 @@ export default function App() {
           path="/farmer"
           element={
             <ProtectedRoute role="farmer">
-              <VerificationGate role="farmer">
-                <AppShell role="farmer" />
-              </VerificationGate>
+              <PrivacyGate>
+                <VerificationGate role="farmer">
+                  <AppShell role="farmer" />
+                </VerificationGate>
+              </PrivacyGate>
             </ProtectedRoute>
           }
         >
@@ -96,9 +101,11 @@ export default function App() {
           path="/buyer"
           element={
             <ProtectedRoute role="buyer">
-              <VerificationGate role="buyer">
-                <AppShell role="buyer" />
-              </VerificationGate>
+              <PrivacyGate>
+                <VerificationGate role="buyer">
+                  <AppShell role="buyer" />
+                </VerificationGate>
+              </PrivacyGate>
             </ProtectedRoute>
           }
         >
@@ -113,7 +120,9 @@ export default function App() {
           path="/admin"
           element={
             <ProtectedRoute role="admin">
-              <AppShell role="admin" />
+              <PrivacyGate>
+                <AppShell role="admin" />
+              </PrivacyGate>
             </ProtectedRoute>
           }
         >

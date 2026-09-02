@@ -91,13 +91,25 @@ function VerificationScreen({
     farm_address: '',
     barangay: 'Pagatban, Bayawan City',
     farm_size_ha: '',
+    latitude: '',
+    longitude: '',
     notes: '',
   })
   const [errors, setErrors] = useState<Record<string, string | null>>({})
   const [busy, setBusy] = useState(false)
   const [idFile, setIdFile] = useState<File | null>(null)
+  const [selfie, setSelfie] = useState<File | null>(null)
+  const [selfiePreview, setSelfiePreview] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!selfie) return
+    const url = URL.createObjectURL(selfie)
+    setSelfiePreview(url)
+    return () => URL.revokeObjectURL(url)
+  }, [selfie])
   const [preview, setPreview] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [locating, setLocating] = useState(false)
 
   useEffect(() => {
     if (!idFile) return
@@ -126,6 +138,8 @@ function VerificationScreen({
       farm_address: record?.farm_address || '',
       barangay: record?.barangay || 'Pagatban, Bayawan City',
       farm_size_ha: record?.farm_size_ha ? String(record.farm_size_ha) : '',
+      latitude: record?.latitude != null ? String(record.latitude) : '',
+      longitude: record?.longitude != null ? String(record.longitude) : '',
       notes: record?.notes || '',
     }))
   }, [record?.id, profile?.id])
@@ -161,7 +175,11 @@ function VerificationScreen({
     const next = {
       full_name: validateRequired(form.full_name, 'Full name'),
       id_photo: idFile || record?.id_photo_path ? null : 'Upload a photo of your ID.',
+      selfie: selfie || record?.selfie_path ? null : 'Take a photo of yourself holding your ID.',
       farm_name: role === 'owner' ? validateRequired(form.farm_name, 'Farm name') : null,
+      latitude:
+        role === 'owner' && !form.latitude ? 'Pin your farm so buyers can find it.' : null,
+      longitude: role === 'owner' && !form.longitude ? 'Longitude is missing.' : null,
       farm_address: role === 'owner' ? validateRequired(form.farm_address, 'Farm address') : null,
       barangay: validateRequired(form.barangay, 'Barangay'),
     }
@@ -190,6 +208,25 @@ function VerificationScreen({
       photoPath = path
     }
 
+    let selfiePath = record?.selfie_path ?? null
+    if (selfie) {
+      setUploading(true)
+      const { data: session } = await supabase.auth.getSession()
+      const uid = session.session?.user.id
+      const ext = selfie.name.split('.').pop()?.toLowerCase() || 'jpg'
+      const path = `${uid}/selfie-${Date.now()}.${ext}`
+      const { error: upError } = await supabase.storage
+        .from('verification-ids')
+        .upload(path, selfie, { upsert: true, contentType: selfie.type })
+      setUploading(false)
+      if (upError) {
+        setBusy(false)
+        toast.error(`Selfie upload failed: ${upError.message}`)
+        return
+      }
+      selfiePath = path
+    }
+
     const payload = {
       profile_id: profile.id,
       role,
@@ -198,9 +235,12 @@ function VerificationScreen({
       id_type: form.id_type,
       id_number: null,
       id_photo_path: photoPath,
+      selfie_path: selfiePath,
       farm_name: form.farm_name.trim(),
       farm_address: form.farm_address.trim(),
       barangay: form.barangay.trim(),
+      latitude: form.latitude ? Number(form.latitude) : null,
+      longitude: form.longitude ? Number(form.longitude) : null,
       farm_size_ha: form.farm_size_ha ? Number(form.farm_size_ha) : null,
       notes: form.notes.trim() || null,
       review_notes: null,
@@ -321,6 +361,68 @@ function VerificationScreen({
               />
               {errors.id_photo && <p className="err">{errors.id_photo}</p>}
             </div>
+
+            <div className="sm:col-span-2">
+              <label className="label" htmlFor="selfie">
+                Photo of yourself holding your ID
+              </label>
+
+              {selfiePreview ? (
+                <div className="overflow-hidden rounded-xl border border-soil-200">
+                  <img
+                    src={selfiePreview}
+                    alt="You holding your ID"
+                    className="max-h-64 w-full bg-soil-50 object-contain"
+                  />
+                  <div className="flex items-center justify-between gap-3 border-t border-soil-200 px-3 py-2">
+                    <span className="text-[12px] text-soil-600">{selfie?.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => setSelfie(null)}
+                      className="text-[13px] font-semibold text-red-600 hover:underline"
+                    >
+                      Retake
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <label
+                  htmlFor="selfie"
+                  className={`flex cursor-pointer flex-col items-center gap-1.5 rounded-xl border-2 border-dashed
+                              px-4 py-8 text-center transition hover:bg-soil-50 ${
+                                errors.selfie ? 'border-red-400' : 'border-soil-200'
+                              }`}
+                >
+                  <span className="text-3xl" aria-hidden>
+                    🤳
+                  </span>
+                  <span className="text-[14px] font-semibold">Take a selfie with your ID</span>
+                  <span className="text-[12px] leading-relaxed text-soil-400">
+                    Hold your ID next to your face so the administrator can see the person on the ID
+                    is you. Good light, no sunglasses or hat.
+                  </span>
+                </label>
+              )}
+
+              <input
+                id="selfie"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                capture="user"
+                className="sr-only"
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  if (!f) return
+                  if (f.size > 5 * 1024 * 1024) {
+                    setErrors((x) => ({ ...x, selfie: 'That photo is over 5 MB.' }))
+                    return
+                  }
+                  setSelfie(f)
+                  setErrors((x) => ({ ...x, selfie: null }))
+                }}
+              />
+              {errors.selfie && <p className="err">{errors.selfie}</p>}
+            </div>
           </div>
         </section>
 
@@ -348,6 +450,82 @@ function VerificationScreen({
               error={errors.barangay}
               onChange={(e) => set('barangay', e.target.value)}
             />
+            <div className="sm:col-span-2">
+              <label className="label">Pin your farm on the map</label>
+              <div className="rounded-xl border border-soil-200 p-4">
+                <p className="text-[13px] leading-relaxed text-soil-600">
+                  Buyers see this marker so they can find you. Stand at your farm and tap the button
+                  below, or open Google Maps, long-press your farm, and copy the two numbers.
+                </p>
+
+                <button
+                  type="button"
+                  className="btn-ghost mt-3 w-full py-2.5 text-[13px]"
+                  disabled={locating}
+                  onClick={() => {
+                    if (!navigator.geolocation) {
+                      toast.error('This device cannot share its location.')
+                      return
+                    }
+                    setLocating(true)
+                    navigator.geolocation.getCurrentPosition(
+                      (pos) => {
+                        set('latitude', pos.coords.latitude.toFixed(6))
+                        set('longitude', pos.coords.longitude.toFixed(6))
+                        setLocating(false)
+                        toast.success('Location captured')
+                      },
+                      () => {
+                        setLocating(false)
+                        toast.error('Could not read your location. Type the numbers instead.')
+                      },
+                      { enableHighAccuracy: true, timeout: 10000 },
+                    )
+                  }}
+                >
+                  {locating ? 'Finding you…' : '📍 Use my current location'}
+                </button>
+
+                <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                  <Field
+                    label="Latitude"
+                    placeholder="9.3644"
+                    inputMode="decimal"
+                    value={form.latitude}
+                    error={errors.latitude}
+                    onChange={(e) => set('latitude', e.target.value)}
+                  />
+                  <Field
+                    label="Longitude"
+                    placeholder="122.8064"
+                    inputMode="decimal"
+                    value={form.longitude}
+                    error={errors.longitude}
+                    onChange={(e) => set('longitude', e.target.value)}
+                  />
+                </div>
+
+                {form.latitude && form.longitude ? (
+                  <>
+                    <iframe
+                      title="Your farm location"
+                      className="mt-3 h-56 w-full rounded-lg border border-soil-200"
+                      loading="lazy"
+                      referrerPolicy="no-referrer-when-downgrade"
+                      src={`https://maps.google.com/maps?q=${form.latitude},${form.longitude}&z=15&output=embed`}
+                    />
+                    <p className="mt-2 text-center text-[12px] text-soil-500">
+                      Check the marker sits on your farm. Adjust the numbers if it does not.
+                    </p>
+                  </>
+                ) : (
+                  <p className="mt-3 rounded-lg bg-soil-50 px-3.5 py-3 text-center text-[13px] text-soil-500">
+                    No location set yet
+                  </p>
+                )}
+              </div>
+            </div>
+
             <Field
               label="Farm size (hectares)"
               type="number"

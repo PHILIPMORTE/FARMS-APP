@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
+import { RateDialog } from '@/components/Ratings'
 import { friendlyError } from '@/lib/validation'
 import { useAuth } from '@/context/AuthContext'
 import { Badge, Dialog, Empty, Spinner, Stat, TextArea } from '@/components/ui'
@@ -23,6 +24,7 @@ export default function BuyerOrders() {
   const [events, setEvents] = useState<Record<string, OrderEvent[]>>({})
   const [tab, setTab] = useState<string>('all')
   const [cancelling, setCancelling] = useState<Order | null>(null)
+  const [rating, setRating] = useState<Order | null>(null)
   const [reason, setReason] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -221,6 +223,15 @@ export default function BuyerOrders() {
                   />
                 </div>
 
+                {effectiveStage(o) === 'completed' && (
+                  <button
+                    className="btn-ghost w-full py-2 text-[13px]"
+                    onClick={() => setRating(o)}
+                  >
+                    ⭐ Rate this farm
+                  </button>
+                )}
+
                 {['placed', 'confirmed'].includes(effectiveStage(o)) && (
                   <button
                     className="btn-ghost w-full py-2 text-[13px] text-red-600 hover:bg-red-50"
@@ -237,6 +248,20 @@ export default function BuyerOrders() {
           })}
         </div>
       )}
+      <RateDialog
+        open={rating !== null}
+        onClose={() => setRating(null)}
+        title="Rate this farm"
+        description={rating?.products?.farms?.name ?? undefined}
+        onSubmit={async (stars, comment) =>
+          await supabase.rpc('rate_order', {
+            p_order_id: rating!.id,
+            p_stars: stars,
+            p_comment: comment,
+          })
+        }
+      />
+
       <Dialog
         open={cancelling !== null}
         onClose={() => setCancelling(null)}
