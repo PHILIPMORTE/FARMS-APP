@@ -54,6 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [farm, setFarm] = useState<Farm | null>(null)
   const [loading, setLoading] = useState(true)
+  const [profileLoading, setProfileLoading] = useState(false)
   const mounted = useRef(true)
 
   async function loadProfile(userId: string, role: Role | null) {
@@ -104,10 +105,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { data: sub } = supabase.auth.onAuthStateChange(async (_event, s) => {
       setSession(s)
-      if (s) await loadProfile(s.user.id, getActiveRole())
-      else {
+      if (s) {
+        setProfileLoading(true)
+        try {
+          await loadProfile(s.user.id, getActiveRole())
+        } finally {
+          if (mounted.current) setProfileLoading(false)
+        }
+      } else {
         setProfile(null)
         setFarm(null)
+        setProfileLoading(false)
       }
     })
 
@@ -327,7 +335,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       profile,
       farm,
-      loading,
+      loading: loading || profileLoading,
       signInWithPhone,
       registerWithPhone,
       signInWithGoogle,
@@ -336,7 +344,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       refresh,
       signOut,
     }),
-    [session, profile, farm, loading],
+    [session, profile, farm, loading, profileLoading],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

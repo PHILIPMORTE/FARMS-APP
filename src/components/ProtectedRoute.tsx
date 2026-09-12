@@ -18,7 +18,7 @@ export function ProtectedRoute({ role, children }: { role: Role; children: React
   if (!profile) {
     const active = getActiveRole()
     if (active && active !== role) return <Navigate to={ROLE_HOME[active]} replace />
-    return <Navigate to={`/${role}/login`} replace />
+    return <Spinner label="Loading your account" />
   }
 
   if (profile.role !== role) return <Navigate to={ROLE_HOME[profile.role]} replace />

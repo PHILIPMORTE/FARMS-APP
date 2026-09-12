@@ -6973,6 +6973,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [farm, setFarm] = useState<Farm | null>(null)
   const [loading, setLoading] = useState(true)
+  const [profileLoading, setProfileLoading] = useState(false)
   const mounted = useRef(true)
 
   async function loadProfile(userId: string, role: Role | null) {
@@ -7023,10 +7024,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { data: sub } = supabase.auth.onAuthStateChange(async (_event, s) => {
       setSession(s)
-      if (s) await loadProfile(s.user.id, getActiveRole())
-      else {
+      if (s) {
+        setProfileLoading(true)
+        try {
+          await loadProfile(s.user.id, getActiveRole())
+        } finally {
+          if (mounted.current) setProfileLoading(false)
+        }
+      } else {
         setProfile(null)
         setFarm(null)
+        setProfileLoading(false)
       }
     })
 
@@ -7246,7 +7254,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       profile,
       farm,
-      loading,
+      loading: loading || profileLoading,
       signInWithPhone,
       registerWithPhone,
       signInWithGoogle,
@@ -7255,7 +7263,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       refresh,
       signOut,
     }),
-    [session, profile, farm, loading],
+    [session, profile, farm, loading, profileLoading],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
@@ -8272,7 +8280,7 @@ export function ProtectedRoute({ role, children }: { role: Role; children: React
   if (!profile) {
     const active = getActiveRole()
     if (active && active !== role) return <Navigate to={ROLE_HOME[active]} replace />
-    return <Navigate to={`/${role}/login`} replace />
+    return <Spinner label="Loading your account" />
   }
 
   if (profile.role !== role) return <Navigate to={ROLE_HOME[profile.role]} replace />
@@ -12513,9 +12521,11 @@ function AddPlantingDialog({
     expected_kg: number
     days_to_harvest: number
   } | null>(null)
-  const [land, setLand] = useState<{ hectares: number; sqm: number; kg_per_hectare: number } | null>(
-    null,
-  )
+  const [land, setLand] = useState<{
+    hectares: number
+    sqm: number
+    kg_per_hectare: number
+  } | null>(null)
   const [errors, setErrors] = useState<Record<string, string | null>>({})
   const [busy, setBusy] = useState(false)
 
@@ -12535,6 +12545,16 @@ function AddPlantingDialog({
       return
     }
     let alive = true
+    supabase
+      .rpc('land_needed', {
+        p_crop: form.crop,
+        p_variety: chosenVariety,
+        p_seed_kg: seed,
+      })
+      .then(({ data }) => {
+        if (alive) setLand(data as any)
+      })
+
     supabase
       .rpc('estimate_harvest', {
         p_crop: form.crop,
@@ -12793,6 +12813,26 @@ function AddPlantingDialog({
                 </dd>
               </div>
             </dl>
+
+            {land && land.hectares > 0 && (
+              <div className="mt-3 rounded-lg bg-white/70 px-4 py-3 text-center">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-900/70">
+                  Land this seed needs
+                </p>
+                <p className="num mt-0.5 text-[20px] font-bold text-brand-900">
+                  {land.hectares < 1
+                    ? `${Math.round(land.sqm).toLocaleString()} m²`
+                    : `${land.hectares.toFixed(2)} hectares`}
+                </p>
+                <p className="mt-0.5 text-[11px] text-brand-900/60">
+                  {land.hectares < 1
+                    ? `about ${land.hectares.toFixed(3)} hectares`
+                    : `${Math.round(land.sqm).toLocaleString()} m²`}{' '}
+                  · {land.kg_per_hectare} kg of seed per hectare for {titleCase(form.crop)}
+                </p>
+              </div>
+            )}
+
           </div>
         )}
 
@@ -13176,6 +13216,7 @@ import {
 import {
   CROPS,
   CROP_EMOJI,
+  VARIETIES,
   availableSacks,
   peso,
   pesoShort,
@@ -13185,7 +13226,7 @@ import {
   shortDate,
   titleCase,
 } from '@/lib/format'
-import { friendlyError, validateAmount, validateSacks } from '@/lib/validation'
+import { friendlyError, validateAmount, validateSacks, validateRequired } from '@/lib/validation'
 import { BuyerContactCard } from '@/components/BuyerContactCard'
 import { BuyerPurchases } from '@/components/BuyerPurchases'
 import { StageBadge } from '@/components/OrderTimeline'
@@ -13626,6 +13667,7 @@ function AddProductDialog({
 }) {
   const [form, setForm] = useState({
     variety: '',
+    customVariety: '',
     crop: 'rice' as Crop,
     quantity: '',
     price: '',
@@ -13660,7 +13702,10 @@ function AddProductDialog({
     label: h.variety,
   }))
 
-  const chosenVariety = form.variety.trim()
+  const isMilled = form.form === 'milled'
+
+  const chosenVariety =
+    form.variety === '__other' ? form.customVariety.trim() : form.variety.trim()
 
   const matchedHarvest = cropHarvests.find(
     (h) => h.variety.trim().toLowerCase() === chosenVariety.toLowerCase(),
@@ -13672,9 +13717,10 @@ function AddProductDialog({
     )
     .reduce((sum, p) => sum + p.quantity, 0)
 
-  const maxSacks = matchedHarvest
-    ? Math.max((matchedHarvest.actual_sacks ?? 0) - alreadyListed, 0)
-    : null
+  const maxSacks =
+    !isMilled && matchedHarvest
+      ? Math.max((matchedHarvest.actual_sacks ?? 0) - alreadyListed, 0)
+      : null
 
   useEffect(() => {
     if (!chosenVariety) {
@@ -13691,7 +13737,13 @@ function AddProductDialog({
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     const next = {
-      variety: form.variety ? null : 'Choose a harvested crop to list.',
+      variety: form.variety
+        ? null
+        : isMilled
+          ? 'Choose a variety.'
+          : 'Choose a harvested crop to list.',
+      customVariety:
+        form.variety === '__other' ? validateRequired(form.customVariety, 'Variety name') : null,
       quantity: validateSacks(form.quantity, {
         min: 1,
         ...(maxSacks !== null ? { max: maxSacks } : {}),
@@ -13745,7 +13797,14 @@ function AddProductDialog({
         ? `Added to the existing ${chosenVariety} listing`
         : 'Product listed',
     )
-    setForm({ variety: '', crop: 'rice', quantity: '', price: '', form: 'unmilled' })
+    setForm({
+      variety: '',
+      customVariety: '',
+      crop: 'rice',
+      quantity: '',
+      price: '',
+      form: 'unmilled',
+    })
     setPhoto(null)
     onSaved()
   }
@@ -13770,7 +13829,7 @@ function AddProductDialog({
           <button
             className="btn-primary"
             onClick={submit}
-            disabled={busy || harvestOptions.length === 0}
+            disabled={busy || (!isMilled && harvestOptions.length === 0)}
           >
             {uploading ? 'Uploading photo…' : busy ? 'Listing…' : 'Add product'}
           </button>
@@ -13778,7 +13837,17 @@ function AddProductDialog({
       }
     >
       <form onSubmit={submit} className="space-y-4" noValidate>
-        {harvestOptions.length === 0 && (
+        {isMilled && (
+          <div className="rounded-lg border border-brand-200 bg-brand-50 px-4 py-3">
+            <p className="text-[13px] font-bold text-brand-900">Milled rice is listed freely</p>
+            <p className="mt-0.5 text-[13px] leading-relaxed text-brand-900/80">
+              Milled stock does not have to come from your own harvest, so you set the variety,
+              the number of sacks, and the price yourself.
+            </p>
+          </div>
+        )}
+
+        {!isMilled && harvestOptions.length === 0 && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
             <p className="text-[13px] font-bold text-amber-900">
               No harvested {form.crop} yet
@@ -13818,6 +13887,16 @@ function AddProductDialog({
           </div>
         </div>
 
+        {form.variety === '__other' && isMilled && (
+          <Field
+            label="Variety name"
+            placeholder="Type the variety"
+            value={form.customVariety}
+            error={errors.customVariety}
+            onChange={(e) => set('customVariety', e.target.value)}
+          />
+        )}
+
         <div className="grid gap-4 sm:grid-cols-2">
           <Select
             label="Crop"
@@ -13833,11 +13912,17 @@ function AddProductDialog({
             value={form.variety}
             error={errors.variety}
             onChange={(e) => set('variety', e.target.value)}
-            disabled={harvestOptions.length === 0}
+            disabled={!isMilled && harvestOptions.length === 0}
             options={
-              harvestOptions.length === 0
-                ? [{ value: '', label: 'No harvested crops yet' }]
-                : [{ value: '', label: 'Choose a variety…' }, ...harvestOptions]
+              isMilled
+                ? [
+                    { value: '', label: 'Choose a variety…' },
+                    ...VARIETIES[form.crop].map((v) => ({ value: v, label: v })),
+                    { value: '__other', label: 'Other (type it in)' },
+                  ]
+                : harvestOptions.length === 0
+                  ? [{ value: '', label: 'No harvested crops yet' }]
+                  : [{ value: '', label: 'Choose a variety…' }, ...harvestOptions]
             }
           />
         </div>

@@ -740,9 +740,11 @@ function AddPlantingDialog({
     expected_kg: number
     days_to_harvest: number
   } | null>(null)
-  const [land, setLand] = useState<{ hectares: number; sqm: number; kg_per_hectare: number } | null>(
-    null,
-  )
+  const [land, setLand] = useState<{
+    hectares: number
+    sqm: number
+    kg_per_hectare: number
+  } | null>(null)
   const [errors, setErrors] = useState<Record<string, string | null>>({})
   const [busy, setBusy] = useState(false)
 
@@ -762,6 +764,16 @@ function AddPlantingDialog({
       return
     }
     let alive = true
+    supabase
+      .rpc('land_needed', {
+        p_crop: form.crop,
+        p_variety: chosenVariety,
+        p_seed_kg: seed,
+      })
+      .then(({ data }) => {
+        if (alive) setLand(data as any)
+      })
+
     supabase
       .rpc('estimate_harvest', {
         p_crop: form.crop,
@@ -1020,6 +1032,26 @@ function AddPlantingDialog({
                 </dd>
               </div>
             </dl>
+
+            {land && land.hectares > 0 && (
+              <div className="mt-3 rounded-lg bg-white/70 px-4 py-3 text-center">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-900/70">
+                  Land this seed needs
+                </p>
+                <p className="num mt-0.5 text-[20px] font-bold text-brand-900">
+                  {land.hectares < 1
+                    ? `${Math.round(land.sqm).toLocaleString()} m²`
+                    : `${land.hectares.toFixed(2)} hectares`}
+                </p>
+                <p className="mt-0.5 text-[11px] text-brand-900/60">
+                  {land.hectares < 1
+                    ? `about ${land.hectares.toFixed(3)} hectares`
+                    : `${Math.round(land.sqm).toLocaleString()} m²`}{' '}
+                  · {land.kg_per_hectare} kg of seed per hectare for {titleCase(form.crop)}
+                </p>
+              </div>
+            )}
+
           </div>
         )}
 

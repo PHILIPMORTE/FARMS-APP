@@ -19,6 +19,7 @@ import {
 import {
   CROPS,
   CROP_EMOJI,
+  VARIETIES,
   availableSacks,
   peso,
   pesoShort,
@@ -28,7 +29,7 @@ import {
   shortDate,
   titleCase,
 } from '@/lib/format'
-import { friendlyError, validateAmount, validateSacks } from '@/lib/validation'
+import { friendlyError, validateAmount, validateSacks, validateRequired } from '@/lib/validation'
 import { BuyerContactCard } from '@/components/BuyerContactCard'
 import { BuyerPurchases } from '@/components/BuyerPurchases'
 import { StageBadge } from '@/components/OrderTimeline'
@@ -469,6 +470,7 @@ function AddProductDialog({
 }) {
   const [form, setForm] = useState({
     variety: '',
+    customVariety: '',
     crop: 'rice' as Crop,
     quantity: '',
     price: '',
@@ -503,7 +505,10 @@ function AddProductDialog({
     label: h.variety,
   }))
 
-  const chosenVariety = form.variety.trim()
+  const isMilled = form.form === 'milled'
+
+  const chosenVariety =
+    form.variety === '__other' ? form.customVariety.trim() : form.variety.trim()
 
   const matchedHarvest = cropHarvests.find(
     (h) => h.variety.trim().toLowerCase() === chosenVariety.toLowerCase(),
@@ -515,9 +520,10 @@ function AddProductDialog({
     )
     .reduce((sum, p) => sum + p.quantity, 0)
 
-  const maxSacks = matchedHarvest
-    ? Math.max((matchedHarvest.actual_sacks ?? 0) - alreadyListed, 0)
-    : null
+  const maxSacks =
+    !isMilled && matchedHarvest
+      ? Math.max((matchedHarvest.actual_sacks ?? 0) - alreadyListed, 0)
+      : null
 
   useEffect(() => {
     if (!chosenVariety) {
@@ -534,7 +540,13 @@ function AddProductDialog({
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     const next = {
-      variety: form.variety ? null : 'Choose a harvested crop to list.',
+      variety: form.variety
+        ? null
+        : isMilled
+          ? 'Choose a variety.'
+          : 'Choose a harvested crop to list.',
+      customVariety:
+        form.variety === '__other' ? validateRequired(form.customVariety, 'Variety name') : null,
       quantity: validateSacks(form.quantity, {
         min: 1,
         ...(maxSacks !== null ? { max: maxSacks } : {}),
@@ -588,7 +600,14 @@ function AddProductDialog({
         ? `Added to the existing ${chosenVariety} listing`
         : 'Product listed',
     )
-    setForm({ variety: '', crop: 'rice', quantity: '', price: '', form: 'unmilled' })
+    setForm({
+      variety: '',
+      customVariety: '',
+      crop: 'rice',
+      quantity: '',
+      price: '',
+      form: 'unmilled',
+    })
     setPhoto(null)
     onSaved()
   }
@@ -613,7 +632,7 @@ function AddProductDialog({
           <button
             className="btn-primary"
             onClick={submit}
-            disabled={busy || harvestOptions.length === 0}
+            disabled={busy || (!isMilled && harvestOptions.length === 0)}
           >
             {uploading ? 'Uploading photo…' : busy ? 'Listing…' : 'Add product'}
           </button>
@@ -621,7 +640,17 @@ function AddProductDialog({
       }
     >
       <form onSubmit={submit} className="space-y-4" noValidate>
-        {harvestOptions.length === 0 && (
+        {isMilled && (
+          <div className="rounded-lg border border-brand-200 bg-brand-50 px-4 py-3">
+            <p className="text-[13px] font-bold text-brand-900">Milled rice is listed freely</p>
+            <p className="mt-0.5 text-[13px] leading-relaxed text-brand-900/80">
+              Milled stock does not have to come from your own harvest, so you set the variety,
+              the number of sacks, and the price yourself.
+            </p>
+          </div>
+        )}
+
+        {!isMilled && harvestOptions.length === 0 && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
             <p className="text-[13px] font-bold text-amber-900">
               No harvested {form.crop} yet
@@ -661,6 +690,16 @@ function AddProductDialog({
           </div>
         </div>
 
+        {form.variety === '__other' && isMilled && (
+          <Field
+            label="Variety name"
+            placeholder="Type the variety"
+            value={form.customVariety}
+            error={errors.customVariety}
+            onChange={(e) => set('customVariety', e.target.value)}
+          />
+        )}
+
         <div className="grid gap-4 sm:grid-cols-2">
           <Select
             label="Crop"
@@ -676,11 +715,17 @@ function AddProductDialog({
             value={form.variety}
             error={errors.variety}
             onChange={(e) => set('variety', e.target.value)}
-            disabled={harvestOptions.length === 0}
+            disabled={!isMilled && harvestOptions.length === 0}
             options={
-              harvestOptions.length === 0
-                ? [{ value: '', label: 'No harvested crops yet' }]
-                : [{ value: '', label: 'Choose a variety…' }, ...harvestOptions]
+              isMilled
+                ? [
+                    { value: '', label: 'Choose a variety…' },
+                    ...VARIETIES[form.crop].map((v) => ({ value: v, label: v })),
+                    { value: '__other', label: 'Other (type it in)' },
+                  ]
+                : harvestOptions.length === 0
+                  ? [{ value: '', label: 'No harvested crops yet' }]
+                  : [{ value: '', label: 'Choose a variety…' }, ...harvestOptions]
             }
           />
         </div>
