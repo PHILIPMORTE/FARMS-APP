@@ -58,7 +58,7 @@ export default function OwnerFinance() {
       </div>
 
       <div className="stagger grid grid-cols-2 gap-3 lg:grid-cols-3">
-        <Stat label="Total income" value={pesoShort(income)} accent="green" />
+        <Stat label="Total sales" value={pesoShort(income)} accent="green" />
         <Stat label="Total expenses" value={pesoShort(expenses)} accent="red" />
         <Stat
           label="Net profit"
@@ -82,9 +82,14 @@ export default function OwnerFinance() {
             are never entered twice.
           </p>
         </div>
-        <button className="btn-primary self-start px-5 py-3" onClick={() => setDialog('income')}>
-          Add other income
-        </button>
+        <div className="flex flex-col gap-2 self-start">
+          <button className="btn-primary px-5 py-3" onClick={() => setDialog('income')}>
+            Add other income
+          </button>
+          <button className="btn-ghost px-5 py-3" onClick={() => setDialog('expense')}>
+            Add expense
+          </button>
+        </div>
       </div>
 
       {rows.length === 0 ? (

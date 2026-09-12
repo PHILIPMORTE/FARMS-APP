@@ -87,6 +87,7 @@ export default function BuyerMarket() {
       if (crop !== 'all' && p.crop !== crop) return false
       if (farmFilter !== 'all' && p.farms?.name !== farmFilter) return false
       const avail = availableSacks(p)
+      if (avail <= 0 && availability !== 'out') return false
       if (availability === 'in' && avail <= 0) return false
       if (availability === 'low' && (avail === 0 || avail > 5)) return false
       if (availability === 'out' && avail > 0) return false

@@ -228,7 +228,7 @@ export default function BuyerOrders() {
                     className="btn-ghost w-full py-2 text-[13px]"
                     onClick={() => setRating(o)}
                   >
-                    ⭐ Rate this farm
+                    ⭐ Rate this seller
                   </button>
                 )}
 
@@ -251,7 +251,7 @@ export default function BuyerOrders() {
       <RateDialog
         open={rating !== null}
         onClose={() => setRating(null)}
-        title="Rate this farm"
+        title="Rate this seller"
         description={rating?.products?.farms?.name ?? undefined}
         onSubmit={async (stars, comment) =>
           await supabase.rpc('rate_order', {

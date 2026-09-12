@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
+import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
+import { friendlyError } from '@/lib/validation'
 import { useAuth } from '@/context/AuthContext'
 import { Badge, Empty, Spinner } from '@/components/ui'
 import { CROP_EMOJI, peso, shortDate, titleCase } from '@/lib/format'
@@ -13,6 +15,8 @@ interface Row extends JobApplication {
 export default function FarmerApplications() {
   const { profile } = useAuth()
   const [rows, setRows] = useState<Row[] | null>(null)
+  const [cancelling, setCancelling] = useState<string | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
     if (!profile) return
@@ -57,7 +61,19 @@ export default function FarmerApplications() {
     return () => {
       alive = false
     }
-  }, [profile?.id])
+  }, [profile?.id, reloadKey])
+
+  async function cancel(id: string) {
+    setCancelling(id)
+    const { error } = await supabase.rpc('cancel_application', { p_application_id: id })
+    setCancelling(null)
+    if (error) {
+      toast.error(friendlyError(error))
+      return
+    }
+    toast.success('Application withdrawn')
+    setReloadKey((k) => k + 1)
+  }
 
   if (!rows) return <Spinner label="Loading your applications" />
 
@@ -135,11 +151,26 @@ export default function FarmerApplications() {
                   </div>
                 )}
 
+                {a.status === 'pending' && (
+                  <button
+                    className="btn-ghost w-full py-2 text-[13px] text-red-600 hover:bg-red-50"
+                    disabled={cancelling === a.id}
+                    onClick={() => cancel(a.id)}
+                  >
+                    {cancelling === a.id ? 'Withdrawing…' : 'Cancel application'}
+                  </button>
+                )}
+
                 {a.status === 'rejected' && (
                   <div className="rounded-xl border border-soil-200 bg-soil-50 px-4 py-3">
+                    {a.message && a.message.includes('Reason:') && (
+                      <p className="mb-2 text-[13px] font-semibold text-soil-800">
+                        {a.message.slice(a.message.lastIndexOf('Reason:'))}
+                      </p>
+                    )}
                     <p className="text-[13px] leading-relaxed text-soil-600">
-                      This farm went with someone else this time. Plenty of farms are hiring —
-                      keep applying, and add your skills to your account so they know what you can do.
+                      Plenty of farms are hiring — keep applying, and add your skills to your
+                      account so they know what you can do.
                     </p>
                   </div>
                 )}

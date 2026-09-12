@@ -319,11 +319,15 @@ function ApplicationsTab({
     [apps, job, status],
   )
 
-  async function decide(id: string, decision: AppStatus) {
+  const [rejecting, setRejecting] = useState<JobApplication | null>(null)
+  const [reason, setReason] = useState('')
+
+  async function decide(id: string, decision: AppStatus, note = '') {
     setBusy(id)
     const { error } = await supabase.rpc('decide_application', {
       p_application_id: id,
       p_decision: decision,
+      p_note: note,
     })
     setBusy(null)
     if (error) {
@@ -331,11 +335,47 @@ function ApplicationsTab({
       return
     }
     toast.success(decision === 'accepted' ? 'Applicant hired' : 'Application rejected')
+    setRejecting(null)
+    setReason('')
     onChanged()
   }
 
   return (
     <div className="space-y-4">
+      <Dialog
+        open={rejecting !== null}
+        onClose={() => setRejecting(null)}
+        title="Reject this application?"
+        description={rejecting?.profiles?.name}
+        footer={
+          <>
+            <button className="btn-ghost" onClick={() => setRejecting(null)}>
+              Go back
+            </button>
+            <button
+              className="btn-danger"
+              disabled={busy !== null || !reason.trim()}
+              onClick={() => decide(rejecting!.id, 'rejected', reason.trim())}
+            >
+              {busy ? 'Saving…' : 'Reject application'}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <p className="text-[14px] leading-relaxed text-soil-800">
+            The applicant is told why, so they know whether to apply again. A reason is required.
+          </p>
+          <TextArea
+            label="Reason for rejecting"
+            max={200}
+            placeholder="e.g. the slots are already filled, or we need someone with harvest experience"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+          />
+        </div>
+      </Dialog>
+
       <div className="grid gap-3 sm:grid-cols-2">
         <Select
           label="Job post"
@@ -454,7 +494,10 @@ function ApplicationsTab({
                     <button
                       className="btn-ghost"
                       disabled={busy === a.id}
-                      onClick={() => decide(a.id, 'rejected')}
+                      onClick={() => {
+                            setRejecting(a)
+                            setReason('')
+                          }}
                     >
                       Reject
                     </button>

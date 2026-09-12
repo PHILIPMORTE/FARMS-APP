@@ -212,6 +212,15 @@ export default function OwnerMarket() {
                   <h3 className="line-clamp-2 text-[13px] font-semibold leading-snug">
                     {p.variety}
                   </h3>
+                  <span
+                    className={`chip mt-0.5 ${
+                      p.form === 'milled'
+                        ? 'bg-brand-100 text-brand-800'
+                        : 'bg-soil-100 text-soil-700'
+                    }`}
+                  >
+                    {p.form === 'milled' ? 'Milled' : 'Unmilled'}
+                  </span>
                   <p className="num text-[17px] font-bold text-brand-700">{peso(p.price)}</p>
                   <p className="text-[11px] text-soil-400">per sack · {titleCase(p.crop)}</p>
 
@@ -463,6 +472,7 @@ function AddProductDialog({
     crop: 'rice' as Crop,
     quantity: '',
     price: '',
+    form: 'unmilled' as 'unmilled' | 'milled',
   })
   const [existing, setExisting] = useState<Product | null>(null)
   const [photo, setPhoto] = useState<File | null>(null)
@@ -561,6 +571,7 @@ function AddProductDialog({
       p_crop: form.crop,
       p_quantity: parseInt(form.quantity, 10),
       p_price: Number(form.price),
+      p_form: form.form,
     })
     setBusy(false)
 
@@ -577,7 +588,7 @@ function AddProductDialog({
         ? `Added to the existing ${chosenVariety} listing`
         : 'Product listed',
     )
-    setForm({ variety: '', crop: 'rice', quantity: '', price: '' })
+    setForm({ variety: '', crop: 'rice', quantity: '', price: '', form: 'unmilled' })
     setPhoto(null)
     onSaved()
   }
@@ -621,6 +632,34 @@ function AddProductDialog({
             </p>
           </div>
         )}
+
+        <div>
+          <label className="label">How is it being sold?</label>
+          <div className="grid grid-cols-2 gap-2">
+            {(['unmilled', 'milled'] as const).map((f) => (
+              <button
+                key={f}
+                type="button"
+                onClick={() => set('form', f)}
+                aria-pressed={form.form === f}
+                className={`rounded-xl border-2 px-3 py-3 text-left transition ${
+                  form.form === f
+                    ? 'border-brand-600 bg-brand-50'
+                    : 'border-soil-200 hover:bg-soil-50'
+                }`}
+              >
+                <span className="block text-[14px] font-bold">
+                  {f === 'milled' ? 'Milled' : 'Unmilled'}
+                </span>
+                <span className="block text-[12px] leading-snug text-soil-600">
+                  {f === 'milled'
+                    ? 'Ready to cook and sell by the sack'
+                    : 'Straight from the harvest, not yet milled'}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Select

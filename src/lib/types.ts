@@ -152,6 +152,7 @@ export interface Product {
   photo_url: string | null
   quantity: number
   reserved: number
+  form: 'unmilled' | 'milled'
   price: number
   status: ProductStatus
   buyer_id: string | null

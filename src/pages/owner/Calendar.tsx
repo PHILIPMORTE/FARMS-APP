@@ -740,6 +740,9 @@ function AddPlantingDialog({
     expected_kg: number
     days_to_harvest: number
   } | null>(null)
+  const [land, setLand] = useState<{ hectares: number; sqm: number; kg_per_hectare: number } | null>(
+    null,
+  )
   const [errors, setErrors] = useState<Record<string, string | null>>({})
   const [busy, setBusy] = useState(false)
 
@@ -767,6 +770,16 @@ function AddPlantingDialog({
       })
       .then(({ data }) => {
         if (alive) setEstimate(data as any)
+      })
+
+    supabase
+      .rpc('land_needed', {
+        p_crop: form.crop,
+        p_variety: chosenVariety,
+        p_seed_kg: seed,
+      })
+      .then(({ data }) => {
+        if (alive) setLand(data as any)
       })
     return () => {
       alive = false
