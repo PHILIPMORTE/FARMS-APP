@@ -86,7 +86,10 @@ export default function OwnerFinance() {
           <button className="btn-primary px-5 py-3" onClick={() => setDialog('income')}>
             Add other income
           </button>
-          <button className="btn-ghost px-5 py-3" onClick={() => setDialog('expense')}>
+          <button
+            className="btn px-5 py-3 bg-red-600 text-white hover:bg-red-700"
+            onClick={() => setDialog('expense')}
+          >
             Add expense
           </button>
         </div>

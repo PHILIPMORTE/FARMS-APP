@@ -5138,6 +5138,124 @@ notify pgrst, 'reload schema';
 '@
 $script:count++
 
+Write-ProjectFile 'supabase\migration-25.sql' @'
+-- ============================================================================
+--  FARMS — MIGRATION 25
+--  A planting records where on the farm it is, so several fields can be told
+--  apart on the calendar and on the map.
+--  Run in the Supabase SQL Editor. Safe to run more than once.
+-- ============================================================================
+
+alter table public.schedules
+  add column if not exists field_latitude  numeric(10,7),
+  add column if not exists field_longitude numeric(10,7);
+
+create or replace function public.add_or_merge_planting(
+  p_farm_id       uuid,
+  p_crop          crop_type,
+  p_variety       text,
+  p_planting_date date,
+  p_seed_kg       numeric,
+  p_note          text default '',
+  p_field_name    text default '',
+  p_latitude      numeric default null,
+  p_longitude     numeric default null
+)
+returns json
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_existing schedules%rowtype;
+  v_est      json;
+  v_seed     numeric;
+  v_days     int;
+  v_id       uuid;
+  v_merged   boolean := false;
+begin
+  if not public.owns_farm(p_farm_id) then
+    raise exception 'You can only plan plantings on your own farm.';
+  end if;
+  if coalesce(p_seed_kg, 0) <= 0 then
+    raise exception 'Enter the seed weight in kilograms.';
+  end if;
+  if coalesce(trim(p_variety), '') = '' then
+    raise exception 'Choose or name the variety.';
+  end if;
+
+  select * into v_existing
+    from schedules
+   where farm_id = p_farm_id
+     and crop = p_crop
+     and lower(trim(variety)) = lower(trim(p_variety))
+     and planting_date = p_planting_date
+     and coalesce(lower(trim(field_name)), '') = coalesce(lower(trim(p_field_name)), '')
+     and status <> 'cancelled'
+   order by created_at
+   limit 1
+   for update;
+
+  if found then
+    if v_existing.status = 'harvested' then
+      raise exception 'That planting was already harvested, so seed cannot be added to it.';
+    end if;
+    v_seed := coalesce(v_existing.seed_kg, 0) + p_seed_kg;
+  else
+    v_seed := p_seed_kg;
+  end if;
+
+  v_est := public.estimate_harvest(p_crop, p_variety, v_seed);
+  v_days := (v_est ->> 'days_to_harvest')::int;
+
+  if found then
+    update schedules
+       set seed_kg = v_seed,
+           expected_sacks = (v_est ->> 'expected_sacks')::int,
+           harvest_date = (p_planting_date + (v_days || ' days')::interval)::date,
+           field_latitude  = coalesce(p_latitude, field_latitude),
+           field_longitude = coalesce(p_longitude, field_longitude),
+           note = case
+                    when coalesce(trim(p_note), '') = '' then note
+                    else coalesce(nullif(note, '') || ' | ', '') || trim(p_note)
+                  end
+     where id = v_existing.id;
+
+    v_id := v_existing.id;
+    v_merged := true;
+  else
+    insert into schedules
+      (farm_id, crop, variety, planting_month, planting_date, harvest_date,
+       estimated_months, seed_kg, expected_sacks, status, note,
+       field_name, field_latitude, field_longitude)
+    values (p_farm_id, p_crop, trim(p_variety),
+            to_char(p_planting_date, 'YYYY-MM'),
+            p_planting_date,
+            (p_planting_date + (v_days || ' days')::interval)::date,
+            greatest(1, round(v_days / 30.0)::int),
+            v_seed,
+            (v_est ->> 'expected_sacks')::int,
+            case when p_planting_date > current_date then 'planned'::schedule_status
+                 else 'planted'::schedule_status end,
+            nullif(trim(p_note), ''),
+            nullif(trim(p_field_name), ''),
+            p_latitude, p_longitude)
+    returning id into v_id;
+  end if;
+
+  return json_build_object(
+    'id', v_id, 'merged', v_merged,
+    'seed_kg', v_seed,
+    'expected_sacks', (v_est ->> 'expected_sacks')::int
+  );
+end $$;
+
+grant execute on function public.add_or_merge_planting(
+  uuid, crop_type, text, date, numeric, text, text, numeric, numeric) to authenticated;
+
+notify pgrst, 'reload schema';
+
+'@
+$script:count++
+
 Write-ProjectFile 'supabase\fix-schedules.sql' @'
 -- ============================================================================
 --  FARMS — DUPLICATE PLANTINGS, THEN THE RULE THAT PREVENTS THEM
@@ -6383,6 +6501,8 @@ export interface Schedule {
   seed_kg: number
   area_ha: number | null
   field_name: string | null
+  field_latitude: number | null
+  field_longitude: number | null
   expected_sacks: number
   actual_sacks: number | null
   harvested_at: string | null
@@ -12216,7 +12336,10 @@ function CalendarView({
                               pct > 55 ? 'text-white' : 'text-soil-800'
                             }`}
                           >
-                            <span className="truncate">{r.variety || titleCase(r.crop)}</span>
+                            <span className="truncate">
+                              {r.variety || titleCase(r.crop)}
+                              {r.field_name ? ` · ${r.field_name}` : ''}
+                            </span>
                             <span className="num ml-auto shrink-0 opacity-90">{pct}%</span>
                           </span>
                         </button>
@@ -12509,11 +12632,23 @@ function AddPlantingDialog({
     customVariety: '',
     seed_kg: '',
     note: '',
+    field_name: '',
+    field_lat: '',
+    field_lng: '',
   })
 
   useEffect(() => {
     if (!date) return
-    setForm({ crop: 'rice', variety: '', customVariety: '', seed_kg: '', note: '' })
+    setForm({
+      crop: 'rice',
+      variety: '',
+      customVariety: '',
+      seed_kg: '',
+      note: '',
+      field_name: '',
+      field_lat: '',
+      field_lng: '',
+    })
     setErrors({})
   }, [date])
   const [estimate, setEstimate] = useState<{
@@ -12528,6 +12663,7 @@ function AddPlantingDialog({
   } | null>(null)
   const [errors, setErrors] = useState<Record<string, string | null>>({})
   const [busy, setBusy] = useState(false)
+  const [locatingField, setLocatingField] = useState(false)
 
   const set = (k: string, v: string) => {
     setForm((f) => ({ ...f, [k]: v }))
@@ -12612,6 +12748,7 @@ function AddPlantingDialog({
           ? validateRequired(form.customVariety, 'Variety name')
           : null,
       seed_kg: Number(form.seed_kg) > 0 ? null : 'Enter the seed weight in kilograms.',
+      field_name: form.field_name.trim() ? null : 'Say where on the farm this is planted.',
     }
     setErrors(next)
     if (Object.values(next).some(Boolean)) return
@@ -12624,6 +12761,7 @@ function AddPlantingDialog({
       p_planting_date: plantingDate,
       p_seed_kg: Number(form.seed_kg),
       p_note: form.note.trim(),
+      p_field_name: form.field_name.trim(),
     })
     setBusy(false)
 
@@ -12712,6 +12850,73 @@ function AddPlantingDialog({
               { value: '__other', label: 'Other (not on the list)' },
             ]}
           />
+        </div>
+
+        <Field
+          label="Where on the farm?"
+          placeholder="e.g. north field, lot 2, riverside plot"
+          value={form.field_name}
+          error={errors.field_name}
+          onChange={(e) => set('field_name', e.target.value)}
+        />
+
+        <div>
+          <label className="label" htmlFor="fieldname">
+            Which field is this?
+          </label>
+          <input
+            id="fieldname"
+            className="field"
+            placeholder="e.g. North field, Lot 2, beside the river"
+            value={form.field_name}
+            onChange={(e) => set('field_name', e.target.value)}
+          />
+
+          <button
+            type="button"
+            className="btn-ghost mt-2 w-full py-2 text-[13px]"
+            disabled={locatingField}
+            onClick={() => {
+              if (!navigator.geolocation) {
+                toast.error('This device cannot share its location.')
+                return
+              }
+              setLocatingField(true)
+              navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                  set('field_lat', pos.coords.latitude.toFixed(6))
+                  set('field_lng', pos.coords.longitude.toFixed(6))
+                  setLocatingField(false)
+                  toast.success('Field location captured')
+                },
+                () => {
+                  setLocatingField(false)
+                  toast.error('Could not read your location.')
+                },
+                { enableHighAccuracy: true, timeout: 10000 },
+              )
+            }}
+          >
+            {locatingField ? 'Finding you…' : '📍 Pin this field where I am standing'}
+          </button>
+
+          {form.field_lat && form.field_lng && (
+            <div className="mt-2 flex items-center justify-between gap-3 rounded-lg bg-brand-50 px-3.5 py-2.5">
+              <span className="num text-[12px] text-brand-900">
+                {Number(form.field_lat).toFixed(5)}, {Number(form.field_lng).toFixed(5)}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  set('field_lat', '')
+                  set('field_lng', '')
+                }}
+                className="text-[12px] font-semibold text-red-600 hover:underline"
+              >
+                Clear
+              </button>
+            </div>
+          )}
         </div>
 
         {form.variety === '__other' && (
@@ -12820,15 +13025,10 @@ function AddPlantingDialog({
                   Land this seed needs
                 </p>
                 <p className="num mt-0.5 text-[20px] font-bold text-brand-900">
-                  {land.hectares < 1
-                    ? `${Math.round(land.sqm).toLocaleString()} m²`
-                    : `${land.hectares.toFixed(2)} hectares`}
+                  {Math.round(land.sqm).toLocaleString()} m²
                 </p>
                 <p className="mt-0.5 text-[11px] text-brand-900/60">
-                  {land.hectares < 1
-                    ? `about ${land.hectares.toFixed(3)} hectares`
-                    : `${Math.round(land.sqm).toLocaleString()} m²`}{' '}
-                  · {land.kg_per_hectare} kg of seed per hectare for {titleCase(form.crop)}
+                  {land.kg_per_hectare} kg of seed covers 10,000 m² of {titleCase(form.crop)}
                 </p>
               </div>
             )}
@@ -12981,6 +13181,8 @@ function DetailDialog({
                     : '—'
                 }
               />
+              <Row label="Where" value={schedule.field_name || '—'} />
+              <Row label="Field" value={schedule.field_name || 'Not set'} />
               <Row label="Seed used" value={`${schedule.seed_kg} kg`} />
               <Row label="Expected sacks" value={`${sacks(schedule.expected_sacks)} sacks`} />
               <Row label="Expected weight" value={`${schedule.expected_sacks * 25} kg`} />
@@ -14321,7 +14523,10 @@ export default function OwnerFinance() {
           <button className="btn-primary px-5 py-3" onClick={() => setDialog('income')}>
             Add other income
           </button>
-          <button className="btn-ghost px-5 py-3" onClick={() => setDialog('expense')}>
+          <button
+            className="btn px-5 py-3 bg-red-600 text-white hover:bg-red-700"
+            onClick={() => setDialog('expense')}
+          >
             Add expense
           </button>
         </div>

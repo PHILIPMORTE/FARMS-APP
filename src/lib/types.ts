@@ -113,6 +113,8 @@ export interface Schedule {
   seed_kg: number
   area_ha: number | null
   field_name: string | null
+  field_latitude: number | null
+  field_longitude: number | null
   expected_sacks: number
   actual_sacks: number | null
   harvested_at: string | null

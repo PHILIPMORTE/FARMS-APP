@@ -435,7 +435,10 @@ function CalendarView({
                               pct > 55 ? 'text-white' : 'text-soil-800'
                             }`}
                           >
-                            <span className="truncate">{r.variety || titleCase(r.crop)}</span>
+                            <span className="truncate">
+                              {r.variety || titleCase(r.crop)}
+                              {r.field_name ? ` · ${r.field_name}` : ''}
+                            </span>
                             <span className="num ml-auto shrink-0 opacity-90">{pct}%</span>
                           </span>
                         </button>
@@ -728,11 +731,23 @@ function AddPlantingDialog({
     customVariety: '',
     seed_kg: '',
     note: '',
+    field_name: '',
+    field_lat: '',
+    field_lng: '',
   })
 
   useEffect(() => {
     if (!date) return
-    setForm({ crop: 'rice', variety: '', customVariety: '', seed_kg: '', note: '' })
+    setForm({
+      crop: 'rice',
+      variety: '',
+      customVariety: '',
+      seed_kg: '',
+      note: '',
+      field_name: '',
+      field_lat: '',
+      field_lng: '',
+    })
     setErrors({})
   }, [date])
   const [estimate, setEstimate] = useState<{
@@ -747,6 +762,7 @@ function AddPlantingDialog({
   } | null>(null)
   const [errors, setErrors] = useState<Record<string, string | null>>({})
   const [busy, setBusy] = useState(false)
+  const [locatingField, setLocatingField] = useState(false)
 
   const set = (k: string, v: string) => {
     setForm((f) => ({ ...f, [k]: v }))
@@ -831,6 +847,7 @@ function AddPlantingDialog({
           ? validateRequired(form.customVariety, 'Variety name')
           : null,
       seed_kg: Number(form.seed_kg) > 0 ? null : 'Enter the seed weight in kilograms.',
+      field_name: form.field_name.trim() ? null : 'Say where on the farm this is planted.',
     }
     setErrors(next)
     if (Object.values(next).some(Boolean)) return
@@ -843,6 +860,7 @@ function AddPlantingDialog({
       p_planting_date: plantingDate,
       p_seed_kg: Number(form.seed_kg),
       p_note: form.note.trim(),
+      p_field_name: form.field_name.trim(),
     })
     setBusy(false)
 
@@ -931,6 +949,73 @@ function AddPlantingDialog({
               { value: '__other', label: 'Other (not on the list)' },
             ]}
           />
+        </div>
+
+        <Field
+          label="Where on the farm?"
+          placeholder="e.g. north field, lot 2, riverside plot"
+          value={form.field_name}
+          error={errors.field_name}
+          onChange={(e) => set('field_name', e.target.value)}
+        />
+
+        <div>
+          <label className="label" htmlFor="fieldname">
+            Which field is this?
+          </label>
+          <input
+            id="fieldname"
+            className="field"
+            placeholder="e.g. North field, Lot 2, beside the river"
+            value={form.field_name}
+            onChange={(e) => set('field_name', e.target.value)}
+          />
+
+          <button
+            type="button"
+            className="btn-ghost mt-2 w-full py-2 text-[13px]"
+            disabled={locatingField}
+            onClick={() => {
+              if (!navigator.geolocation) {
+                toast.error('This device cannot share its location.')
+                return
+              }
+              setLocatingField(true)
+              navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                  set('field_lat', pos.coords.latitude.toFixed(6))
+                  set('field_lng', pos.coords.longitude.toFixed(6))
+                  setLocatingField(false)
+                  toast.success('Field location captured')
+                },
+                () => {
+                  setLocatingField(false)
+                  toast.error('Could not read your location.')
+                },
+                { enableHighAccuracy: true, timeout: 10000 },
+              )
+            }}
+          >
+            {locatingField ? 'Finding you…' : '📍 Pin this field where I am standing'}
+          </button>
+
+          {form.field_lat && form.field_lng && (
+            <div className="mt-2 flex items-center justify-between gap-3 rounded-lg bg-brand-50 px-3.5 py-2.5">
+              <span className="num text-[12px] text-brand-900">
+                {Number(form.field_lat).toFixed(5)}, {Number(form.field_lng).toFixed(5)}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  set('field_lat', '')
+                  set('field_lng', '')
+                }}
+                className="text-[12px] font-semibold text-red-600 hover:underline"
+              >
+                Clear
+              </button>
+            </div>
+          )}
         </div>
 
         {form.variety === '__other' && (
@@ -1039,15 +1124,10 @@ function AddPlantingDialog({
                   Land this seed needs
                 </p>
                 <p className="num mt-0.5 text-[20px] font-bold text-brand-900">
-                  {land.hectares < 1
-                    ? `${Math.round(land.sqm).toLocaleString()} m²`
-                    : `${land.hectares.toFixed(2)} hectares`}
+                  {Math.round(land.sqm).toLocaleString()} m²
                 </p>
                 <p className="mt-0.5 text-[11px] text-brand-900/60">
-                  {land.hectares < 1
-                    ? `about ${land.hectares.toFixed(3)} hectares`
-                    : `${Math.round(land.sqm).toLocaleString()} m²`}{' '}
-                  · {land.kg_per_hectare} kg of seed per hectare for {titleCase(form.crop)}
+                  {land.kg_per_hectare} kg of seed covers 10,000 m² of {titleCase(form.crop)}
                 </p>
               </div>
             )}
@@ -1200,6 +1280,8 @@ function DetailDialog({
                     : '—'
                 }
               />
+              <Row label="Where" value={schedule.field_name || '—'} />
+              <Row label="Field" value={schedule.field_name || 'Not set'} />
               <Row label="Seed used" value={`${schedule.seed_kg} kg`} />
               <Row label="Expected sacks" value={`${sacks(schedule.expected_sacks)} sacks`} />
               <Row label="Expected weight" value={`${schedule.expected_sacks * 25} kg`} />
