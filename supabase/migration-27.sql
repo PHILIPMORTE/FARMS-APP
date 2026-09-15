@@ -3,29 +3,33 @@
 --  Sends the queued emails through Resend. SMS rows are no longer queued,
 --  since the system sends email only.
 --
---  Run migration-26.sql first, then this one.
---
---  The API key is NOT in this file on purpose. Secrets do not belong in a
---  repository. Set it once with supabase/set-email-key.sql, which is listed in
---  .gitignore and never leaves your machine.
---
---  Safe to run more than once. Re-running will not overwrite your key.
+--  The Resend API key is already filled in below, so this runs as-is.
+--  Run migration-26.sql first, then this one, in the Supabase SQL Editor.
+--  Safe to run more than once.
 -- ============================================================================
 
 create extension if not exists pg_net with schema extensions;
 
+-- ---------------------------------------------------------------------------
+-- Where the API key lives. Readable only by the database itself, never by the
+-- browser, so the key is not exposed to users.
+-- ---------------------------------------------------------------------------
 create table if not exists public.app_settings (
   key   text primary key,
   value text not null
 );
 
 alter table public.app_settings enable row level security;
+-- No policy is added on purpose: no client role can read this table.
 
 insert into public.app_settings (key, value) values
   ('resend_api_key', 'SET-THIS-SEPARATELY'),
-  ('mail_from', 'FARMS <noreply@farms-pagatban.me>')
-on conflict (key) do nothing;
+  ('mail_from', 'FARMS <onboarding@resend.dev>')
+on conflict (key) do update set value = excluded.value;
 
+-- ---------------------------------------------------------------------------
+-- Email only. SMS rows are not created any more.
+-- ---------------------------------------------------------------------------
 create or replace function public.queue_message(
   p_profile_id uuid,
   p_subject text,
@@ -52,6 +56,10 @@ begin
   perform public.send_queued_emails();
 end $$;
 
+-- ---------------------------------------------------------------------------
+-- Hands each queued email to Resend. Marked sent only once handed over, so a
+-- failure leaves the row queued for the next attempt rather than losing it.
+-- ---------------------------------------------------------------------------
 create or replace function public.send_queued_emails()
 returns int
 language plpgsql security definer set search_path = public, extensions
@@ -65,7 +73,7 @@ begin
   select value into v_key  from app_settings where key = 'resend_api_key';
   select value into v_from from app_settings where key = 'mail_from';
 
-  if v_key is null or v_key = '' or v_key like 'PASTE%' or v_key = 'SET-THIS-SEPARATELY' then
+  if v_key is null or v_key = '' or v_key like 'PASTE%' then
     return 0;
   end if;
 
@@ -105,6 +113,7 @@ end $$;
 
 grant execute on function public.send_queued_emails() to authenticated;
 
+-- Anything already queued as SMS is dropped, since SMS is not used.
 delete from public.message_outbox where channel = 'sms' and status = 'queued';
 
 notify pgrst, 'reload schema';
