@@ -3,9 +3,13 @@
 --  Sends the queued emails through Resend. SMS rows are no longer queued,
 --  since the system sends email only.
 --
---  The Resend API key is already filled in below, so this runs as-is.
---  Run migration-26.sql first, then this one, in the Supabase SQL Editor.
---  Safe to run more than once.
+--  Run migration-26.sql first, then this one.
+--
+--  The API key is NOT in this file on purpose. Secrets do not belong in a
+--  repository. Set it once with supabase/set-email-key.sql, which is listed in
+--  .gitignore and never leaves your machine.
+--
+--  Safe to run more than once. Re-running will not overwrite your key.
 -- ============================================================================
 
 create extension if not exists pg_net with schema extensions;
@@ -24,8 +28,8 @@ alter table public.app_settings enable row level security;
 
 insert into public.app_settings (key, value) values
   ('resend_api_key', 'SET-THIS-SEPARATELY'),
-  ('mail_from', 'FARMS <onboarding@resend.dev>')
-on conflict (key) do update set value = excluded.value;
+  ('mail_from', 'FARMS <noreply@farms-pagatban.me>')
+on conflict (key) do nothing;
 
 -- ---------------------------------------------------------------------------
 -- Email only. SMS rows are not created any more.
@@ -73,7 +77,7 @@ begin
   select value into v_key  from app_settings where key = 'resend_api_key';
   select value into v_from from app_settings where key = 'mail_from';
 
-  if v_key is null or v_key = '' or v_key like 'PASTE%' then
+  if v_key is null or v_key = '' or v_key like 'PASTE%' or v_key = 'SET-THIS-SEPARATELY' then
     return 0;
   end if;
 

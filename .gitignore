@@ -21,4 +21,5 @@ dist-ssr
 *.log
 npm-debug.log*
 
-setup-farms.ps1
+# Holds the mail provider API key. Never commit this.
+supabase/set-email-key.sql

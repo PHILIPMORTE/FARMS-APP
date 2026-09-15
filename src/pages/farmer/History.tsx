@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/context/AuthContext'
 import { friendlyError } from '@/lib/validation'
 import { Badge, DataTable, Dialog, Empty, Spinner, Stat } from '@/components/ui'
 import { ATTENDANCE_LABEL, hours, peso, pesoShort, shortDate,
@@ -19,6 +20,7 @@ function clock(iso: string | null): string {
 }
 
 export default function FarmerHistory() {
+  const { profile } = useAuth()
   const [rows, setRows] = useState<AttendanceRow[] | null>(null)
   const [month, setMonth] = useState(() => todayISO().slice(0, 7))
   const [confirming, setConfirming] = useState<string | null>(null)
@@ -42,6 +44,7 @@ export default function FarmerHistory() {
   }
 
   useEffect(() => {
+    if (!profile) return
     ;(async () => {
       setRows(null)
       const [y, m] = month.split('-').map(Number)
@@ -51,13 +54,14 @@ export default function FarmerHistory() {
       const { data } = await supabase
         .from('attendance')
         .select('*, farms(name)')
+        .eq('farmer_id', profile.id)
         .gte('work_date', start)
         .lte('work_date', end)
         .order('work_date', { ascending: false })
 
       setRows((data as unknown as AttendanceRow[]) ?? [])
     })()
-  }, [month, reloadKey])
+  }, [month, reloadKey, profile?.id])
 
   const totals = useMemo(() => {
     const list = rows ?? []

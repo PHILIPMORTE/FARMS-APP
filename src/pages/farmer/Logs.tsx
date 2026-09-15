@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/context/AuthContext'
 import { Empty, SectionHeading, Spinner, Stat } from '@/components/ui'
 import { hours, shortDate,
   todayISO, peso } from '@/lib/format'
@@ -69,6 +70,7 @@ function elapsed(from: string, to: Date, minusMinutes = 0): string {
 }
 
 export default function FarmerLogs() {
+  const { profile } = useAuth()
   const [shift, setShift] = useState<OpenShift | null>(null)
   const [jobs, setJobs] = useState<ActiveJob[]>([])
   const [jobId, setJobId] = useState('')
@@ -78,6 +80,7 @@ export default function FarmerLogs() {
   const [now, setNow] = useState(new Date())
 
   const load = useCallback(async () => {
+    if (!profile) return
     const { data } = await supabase.rpc('my_open_shift')
     setShift((data as OpenShift | null) ?? null)
 
@@ -92,11 +95,12 @@ export default function FarmerLogs() {
     const { data: rows } = await supabase
       .from('attendance')
       .select('*')
+      .eq('farmer_id', profile!.id)
       .eq('work_date', todayISO())
       .order('time_in', { ascending: false })
     setToday((rows as AttendanceRow[]) ?? [])
     setLoading(false)
-  }, [])
+  }, [profile?.id])
 
   useEffect(() => {
     load()

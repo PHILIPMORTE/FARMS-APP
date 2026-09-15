@@ -67,8 +67,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [profileLoading, setProfileLoading] = useState(false)
   const mounted = useRef(true)
+  const loadSeq = useRef(0)
+  const signingIn = useRef(false)
 
   async function loadProfile(userId: string, role: Role | null) {
+    const seq = ++loadSeq.current
+    const stale = () => !mounted.current || seq !== loadSeq.current
+
     let wanted = role
 
     if (!wanted) {
@@ -77,6 +82,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .select('role')
         .eq('user_id', userId)
         .order('created_at')
+
+      if (stale()) return
 
       const roles = ((mine as { role: Role }[]) ?? []).map((r) => r.role)
       if (roles.length === 1) {
@@ -96,7 +103,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .eq('role', wanted)
       .maybeSingle()
 
-    if (!mounted.current) return
+    if (stale()) return
     setProfile((prof as Profile) ?? null)
 
     if (prof && wanted === 'owner') {
@@ -114,8 +121,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .single()
         f = created
       }
-      if (mounted.current) setFarm((f as Farm) ?? null)
-    } else {
+      if (!stale()) setFarm((f as Farm) ?? null)
+    } else if (!stale()) {
       setFarm(null)
     }
   }
@@ -131,6 +138,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { data: sub } = supabase.auth.onAuthStateChange(async (_event, s) => {
       setSession(s)
+
+      if (signingIn.current) return
+
       if (s) {
         setProfileLoading(true)
         try {
@@ -157,6 +167,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function signInWithPhone(role: Role, phoneInput: string, password: string) {
+    signingIn.current = true
+    try {
+      return await doSignInWithPhone(role, phoneInput, password)
+    } finally {
+      signingIn.current = false
+    }
+  }
+
+  async function doSignInWithPhone(role: Role, phoneInput: string, password: string) {
     const phone = normalisePhone(phoneInput)
     if (!phone) throw new AuthError('Use a Philippine mobile number, like 09171234567.')
 
@@ -197,6 +216,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function registerWithPhone(role: Role, name: string, phoneInput: string, password: string) {
+    signingIn.current = true
+    try {
+      return await doRegisterWithPhone(role, name, phoneInput, password)
+    } finally {
+      signingIn.current = false
+    }
+  }
+
+  async function doRegisterWithPhone(
+    role: Role,
+    name: string,
+    phoneInput: string,
+    password: string,
+  ) {
     const phone = normalisePhone(phoneInput)
     if (!phone) throw new AuthError('Use a Philippine mobile number, like 09171234567.')
 
