@@ -276,6 +276,7 @@ export default function OwnerMarket() {
           <DataTable
             minWidth="50rem"
             headers={[
+              { label: 'Order ID' },
               { label: 'Date' },
               { label: 'Product' },
               { label: 'Buyer' },
@@ -288,6 +289,7 @@ export default function OwnerMarket() {
           >
             {activeOrders.map((o) => (
               <tr key={o.id}>
+                <td className="num px-4 py-3 font-semibold text-soil-800">{o.order_no ?? '—'}</td>
                 <td className="num px-4 py-3 text-soil-600">{shortDate(o.created_at)}</td>
                 <td className="px-4 py-3 font-semibold">
                   {o.products?.crop ? `${CROP_EMOJI[o.products.crop]} ` : ''}
@@ -367,6 +369,7 @@ export default function OwnerMarket() {
           <DataTable
             minWidth="44rem"
             headers={[
+              { label: 'Order ID' },
               { label: 'Date' },
               { label: 'Product' },
               { label: 'Buyer' },
@@ -377,6 +380,7 @@ export default function OwnerMarket() {
           >
             {finishedOrders.map((o) => (
               <tr key={o.id}>
+                <td className="num px-4 py-3 font-semibold text-soil-800">{o.order_no ?? '—'}</td>
                 <td className="num px-4 py-3 text-soil-600">{shortDate(o.created_at)}</td>
                 <td className="px-4 py-3 font-semibold">
                   {o.products?.crop ? `${CROP_EMOJI[o.products.crop]} ` : ''}

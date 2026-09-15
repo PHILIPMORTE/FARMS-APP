@@ -24,10 +24,21 @@ interface AuthState {
 const Ctx = createContext<AuthState | null>(null)
 
 const ROLE_KEY = 'farms.active-role'
-export const getActiveRole = (): Role | null =>
-  (sessionStorage.getItem(ROLE_KEY) as Role | null) ?? null
-export const setActiveRole = (r: Role | null) =>
-  r ? sessionStorage.setItem(ROLE_KEY, r) : sessionStorage.removeItem(ROLE_KEY)
+export const getActiveRole = (): Role | null => {
+  const stored =
+    localStorage.getItem(ROLE_KEY) ?? sessionStorage.getItem(ROLE_KEY)
+  return (stored as Role | null) ?? null
+}
+
+export const setActiveRole = (r: Role | null) => {
+  if (r) {
+    localStorage.setItem(ROLE_KEY, r)
+    sessionStorage.setItem(ROLE_KEY, r)
+  } else {
+    localStorage.removeItem(ROLE_KEY)
+    sessionStorage.removeItem(ROLE_KEY)
+  }
+}
 
 class AuthError extends Error {}
 
@@ -58,22 +69,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const mounted = useRef(true)
 
   async function loadProfile(userId: string, role: Role | null) {
-    if (!role) {
-      setProfile(null)
-      setFarm(null)
-      return
+    let wanted = role
+
+    if (!wanted) {
+      const { data: mine } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('user_id', userId)
+        .order('created_at')
+
+      const roles = ((mine as { role: Role }[]) ?? []).map((r) => r.role)
+      if (roles.length === 1) {
+        wanted = roles[0]
+        setActiveRole(wanted)
+      } else {
+        setProfile(null)
+        setFarm(null)
+        return
+      }
     }
+
     const { data: prof } = await supabase
       .from('profiles')
       .select('*')
       .eq('user_id', userId)
-      .eq('role', role)
+      .eq('role', wanted)
       .maybeSingle()
 
     if (!mounted.current) return
     setProfile((prof as Profile) ?? null)
 
-    if (prof && role === 'owner') {
+    if (prof && wanted === 'owner') {
       let { data: f } = await supabase
         .from('farms')
         .select('*')

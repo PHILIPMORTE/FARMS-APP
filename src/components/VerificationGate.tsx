@@ -110,6 +110,7 @@ function VerificationScreen({
   const [preview, setPreview] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
   const [locating, setLocating] = useState(false)
+  const [summary, setSummary] = useState<{ field: string; message: string }[]>([])
 
   useEffect(() => {
     if (!idFile) return
@@ -184,7 +185,19 @@ function VerificationScreen({
       barangay: validateRequired(form.barangay, 'Barangay'),
     }
     setErrors(next)
-    if (Object.values(next).some(Boolean)) return
+
+    const problems = Object.entries(next).filter(([, v]) => v)
+    if (problems.length > 0) {
+      setSummary(problems.map(([k, v]) => ({ field: k, message: String(v) })))
+      window.setTimeout(() => {
+        document.getElementById('form-problems')?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+        })
+      }, 0)
+      return
+    }
+    setSummary([])
 
     setBusy(true)
 
@@ -282,6 +295,39 @@ function VerificationScreen({
       )}
 
       <form onSubmit={submit} className="mt-5 space-y-5 text-left" noValidate>
+        {summary.length > 0 && (
+          <div
+            id="form-problems"
+            role="alert"
+            className="animate-fade-up rounded-xl border-2 border-red-300 bg-red-50 px-4 py-3.5"
+          >
+            <p className="text-[14px] font-bold text-red-800">
+              {summary.length === 1
+                ? 'One thing still needs filling in'
+                : `${summary.length} things still need filling in`}
+            </p>
+            <ul className="mt-1.5 space-y-1">
+              {summary.map((pr) => (
+                <li key={pr.field}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const el =
+                        document.getElementById(pr.field) ??
+                        document.querySelector<HTMLElement>(`[name="${pr.field}"]`)
+                      el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                      el?.focus()
+                    }}
+                    className="text-left text-[13px] font-medium text-red-700 underline decoration-red-300 hover:decoration-red-700"
+                  >
+                    {pr.message}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         <section>
           <SectionHeading>Your identity</SectionHeading>
           <div className="grid gap-4 sm:grid-cols-2">

@@ -182,6 +182,7 @@ export interface Order {
   quantity: number
   total_price: number
   status: OrderStatus
+  order_no: string | null
   stage: OrderStage
   paid: boolean
   paid_at: string | null

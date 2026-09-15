@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Dialog } from '@/components/ui'
-import { useAuth } from '@/context/AuthContext'
+import { setActiveRole, useAuth } from '@/context/AuthContext'
 import { ROLE_HOME, ROLE_LABEL } from '@/lib/format'
 import type { Role } from '@/lib/types'
 import { friendlyError, validateName, validatePassword, validatePhone } from '@/lib/validation'
@@ -24,7 +24,7 @@ const NEXT_ROLE: Record<Role, { role: Role; label: string }> = {
 type Errors = Record<string, string | null>
 
 export default function LoginPage({ role }: { role: Role }) {
-  const { session, profile, signInWithPhone, registerWithPhone, signInWithGoogle, sendPasswordReset } =
+  const { session, profile, signOut, signInWithPhone, registerWithPhone, signInWithGoogle, sendPasswordReset } =
     useAuth()
   const navigate = useNavigate()
 
@@ -41,6 +41,37 @@ export default function LoginPage({ role }: { role: Role }) {
   }, [role])
 
   if (session && profile?.role === role) return <Navigate to={ROLE_HOME[role]} replace />
+
+  if (session && !profile) {
+    return (
+      <div className="auth-wash flex min-h-screen items-center justify-center px-5">
+        <div className="auth-card relative z-10 w-full max-w-sm rounded-2xl p-7 text-center">
+          <h1 className="text-[18px] font-bold">You are still signed in</h1>
+          <p className="mt-1.5 text-[14px] leading-relaxed text-soil-600">
+            Continue into your {ROLE_LABEL[role]} account, or sign out to use a different one.
+          </p>
+          <button
+            className="btn-primary mt-5 w-full"
+            onClick={() => {
+              setActiveRole(role)
+              window.location.href = ROLE_HOME[role]
+            }}
+          >
+            Continue as {ROLE_LABEL[role]}
+          </button>
+          <button
+            className="btn-ghost mt-2 w-full"
+            onClick={async () => {
+              await signOut()
+              window.location.reload()
+            }}
+          >
+            Sign out
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   const set = (k: string, v: string) => {
     setForm((f) => ({ ...f, [k]: v }))

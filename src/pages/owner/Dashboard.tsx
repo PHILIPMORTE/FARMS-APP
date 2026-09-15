@@ -26,6 +26,8 @@ export default function OwnerDashboard() {
     let alive = true
 
     ;(async () => {
+      supabase.rpc('notify_ready_harvests')
+
       supabase.rpc('generate_harvest_reminders').then(({ error }) => {
         if (error) console.warn('Harvest reminders skipped:', error.message)
       })

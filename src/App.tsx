@@ -29,13 +29,22 @@ import OwnerOrders from '@/pages/owner/Orders'
 import OwnerAttendance from '@/pages/owner/Attendance'
 import { VerificationGate } from '@/components/VerificationGate'
 import { PrivacyGate } from '@/components/PrivacyGate'
+import { useAuth } from '@/context/AuthContext'
+import { ROLE_HOME } from '@/lib/format'
 import { AdminDashboard, AdminVerifications } from '@/pages/admin/Dashboard'
 import { AdminUsers, AdminCatalog, AdminOrders } from '@/pages/admin/Manage'
 import { AdminRequests, RequestAdminAccess } from '@/pages/admin/Requests'
+import AdminAccount from '@/pages/admin/Account'
 
 import BuyerMarket from '@/pages/buyer/Market'
 import BuyerOrders from '@/pages/buyer/Orders'
 import BuyerAccount from '@/pages/buyer/Account'
+
+function NotFoundRedirect() {
+  const { session, profile } = useAuth()
+  if (session && profile) return <Navigate to={ROLE_HOME[profile.role]} replace />
+  return <Navigate to="/" replace />
+}
 
 export default function App() {
   return (
@@ -130,13 +139,14 @@ export default function App() {
           <Route path="dashboard" element={<AdminDashboard />} />
           <Route path="verifications" element={<AdminVerifications />} />
           <Route path="users" element={<AdminUsers />} />
+          <Route path="account" element={<AdminAccount />} />
           <Route path="requests" element={<AdminRequests />} />
           <Route path="catalog" element={<AdminCatalog />} />
           <Route path="orders" element={<AdminOrders />} />
           <Route path="notifications" element={<NotificationsPage />} />
         </Route>
 
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<NotFoundRedirect />} />
       </Routes>
 
       <Toaster position="top-center" richColors closeButton />

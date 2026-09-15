@@ -7,6 +7,8 @@ import {
   DataTable,
   Dialog,
   Empty,
+  Search,
+  Select,
   SectionHeading,
   Spinner,
   Stat,
@@ -51,6 +53,8 @@ export default function OwnerOrders() {
   const [acting, setActing] = useState<{ order: Row; stage: OrderStage } | null>(null)
   const [view, setView] = useState<'grid' | 'table'>('table')
   const [settling, setSettling] = useState<string | null>(null)
+  const [query, setQuery] = useState('')
+  const [varietyFilter, setVarietyFilter] = useState('all')
   const [sukiCounts, setSukiCounts] = useState<Record<string, number>>({})
   const [error, setError] = useState<string | null>(null)
 
@@ -124,10 +128,25 @@ export default function OwnerOrders() {
     }
   }, [farm?.id, load])
 
+  const varieties = useMemo(
+    () =>
+      [...new Set((rows ?? []).map((o) => o.products?.variety).filter(Boolean) as string[])].sort(),
+    [rows],
+  )
+
   const filtered = useMemo(() => {
     const tab = TABS.find((t) => t.key === filter) ?? TABS[0]
-    return (rows ?? []).filter(tab.match)
-  }, [rows, filter])
+    const q = query.trim().toLowerCase()
+
+    return (rows ?? []).filter((o) => {
+      if (!tab.match(o)) return false
+      if (varietyFilter !== 'all' && o.products?.variety !== varietyFilter) return false
+      if (!q) return true
+      return [o.order_no, o.buyer?.name, o.products?.variety]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(q))
+    })
+  }, [rows, filter, query, varietyFilter])
 
   const activeList = useMemo(() => filtered.filter((o) => !isFinishedOrder(o)), [filtered])
   const doneList = useMemo(() => filtered.filter((o) => isFinishedOrder(o)), [filtered])
@@ -165,6 +184,23 @@ export default function OwnerOrders() {
         <Stat label="All orders" value={String(rows.length)} />
         <Stat label="Needs action" value={String(open)} accent={open ? 'red' : undefined} />
         <Stat label="Sales value" value={pesoShort(earned)} accent="green" />
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-[1fr_16rem]">
+        <Search
+          value={query}
+          onChange={setQuery}
+          placeholder="Search order ID, buyer or variety"
+        />
+        <Select
+          label=""
+          value={varietyFilter}
+          onChange={(e) => setVarietyFilter(e.target.value)}
+          options={[
+            { value: 'all', label: 'All varieties' },
+            ...varieties.map((v) => ({ value: v, label: v })),
+          ]}
+        />
       </div>
 
       <div className="flex items-end justify-between gap-3">
@@ -220,6 +256,7 @@ export default function OwnerOrders() {
                   <DataTable
                     minWidth="52rem"
                     headers={[
+                      { label: 'Order ID' },
                       { label: 'Date' },
                       { label: 'Product' },
                       { label: 'Buyer' },
@@ -237,6 +274,11 @@ export default function OwnerOrders() {
                       const canCancel = !['completed', 'cancelled', 'delivered'].includes(st)
                       return (
                         <tr key={o.id}>
+                          <td className="num px-4 py-3">
+                            <span className="font-semibold text-soil-800">
+                              {o.order_no ?? '—'}
+                            </span>
+                          </td>
                           <td className="num px-4 py-3 text-soil-600">
                             {shortDate(o.created_at)}
                           </td>

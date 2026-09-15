@@ -191,7 +191,10 @@ export default function BuyerOrders() {
                 <div>
                   <h2 className="text-base font-bold leading-snug">{p?.variety ?? 'Product'}</h2>
                   <p className="text-[13px] text-soil-600">{p?.farms?.name ?? 'Farm'}</p>
-                  <p className="text-[12px] text-soil-400">{shortDate(o.created_at)}</p>
+                  <p className="num text-[12px] font-semibold text-soil-600">
+                  {o.order_no ?? ''}
+                </p>
+                <p className="text-[12px] text-soil-400">{shortDate(o.created_at)}</p>
                 </div>
 
                 <dl className="mt-auto space-y-1.5 border-t border-soil-200/70 pt-3 text-sm">
