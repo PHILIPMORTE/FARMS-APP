@@ -2,17 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
-import {
-  Badge,
-  Dialog,
-  Empty,
-  Field,
-  SectionHeading,
-  Select,
-  Spinner,
-  Stat,
-  TextArea,
-} from '@/components/ui'
+import { Badge, Empty, Select, Spinner, Stat } from '@/components/ui'
 import {
   ATTENDANCE_LABEL,
   hours,
@@ -22,9 +12,8 @@ import {
   shortDate,
   toISODate,
 } from '@/lib/format'
-import { friendlyError, validateAmount } from '@/lib/validation'
+import { friendlyError } from '@/lib/validation'
 import type { AttendanceRow } from '@/lib/types'
-
 
 function clockTime(iso: string | null): string {
   if (!iso) return '—'

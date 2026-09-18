@@ -4,18 +4,9 @@ import { supabase } from '@/lib/supabase'
 import { RateDialog } from '@/components/Ratings'
 import { friendlyError } from '@/lib/validation'
 import { useAuth } from '@/context/AuthContext'
-import { Badge, Dialog, Empty, Spinner, Stat, TextArea } from '@/components/ui'
+import { DataTable, Dialog, Empty, Search, Spinner, Stat, TextArea, ViewToggle } from '@/components/ui'
 import { OrderTimeline, StageBadge } from '@/components/OrderTimeline'
-import {
-  CROP_EMOJI,
-  effectiveStage,
-  peso,
-  pesoShort,
-  sacks,
-  shortDate,
-  titleCase,
-  weightNote,
-} from '@/lib/format'
+import { CROP_EMOJI, effectiveStage, peso, pesoShort, sacks, shortDate, weightNote } from '@/lib/format'
 import type { Order, OrderEvent } from '@/lib/types'
 
 export default function BuyerOrders() {
@@ -25,6 +16,8 @@ export default function BuyerOrders() {
   const [tab, setTab] = useState<string>('all')
   const [cancelling, setCancelling] = useState<Order | null>(null)
   const [rating, setRating] = useState<Order | null>(null)
+  const [query, setQuery] = useState('')
+  const [view, setView] = useState<'grid' | 'table'>('grid')
   const [reason, setReason] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -119,7 +112,14 @@ export default function BuyerOrders() {
   ]
 
   const activeTab = TABS.find((t) => t.key === tab) ?? TABS[0]
-  const shown = orders.filter(activeTab.match)
+  const q = query.trim().toLowerCase()
+  const shown = orders.filter((o) => {
+    if (!activeTab.match(o)) return false
+    if (!q) return true
+    return [o.order_no, o.products?.variety, o.products?.farms?.name]
+      .filter(Boolean)
+      .some((v) => String(v).toLowerCase().includes(q))
+  })
 
   const spent = orders
     .filter((o) => o.status !== 'cancelled')
@@ -135,6 +135,13 @@ export default function BuyerOrders() {
       <div className="stagger grid grid-cols-2 gap-3">
         <Stat label="Total orders" value={String(orders.length)} />
         <Stat label="Total spent" value={pesoShort(spent)} accent="green" />
+      </div>
+
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="min-w-[14rem] flex-1">
+          <Search value={query} onChange={setQuery} placeholder="Search order ID, farm or variety" />
+        </div>
+        <ViewToggle view={view} onChange={setView} />
       </div>
 
       <div className="-mx-4 overflow-x-auto px-4 lg:mx-0 lg:px-0">
@@ -175,6 +182,35 @@ export default function BuyerOrders() {
               : 'Orders move through each stage as the farm updates them.'
           }
         />
+      ) : view === 'table' ? (
+        <DataTable
+          minWidth="52rem"
+          headers={[
+            { label: 'Order ID' },
+            { label: 'Date' },
+            { label: 'Product' },
+            { label: 'Farm' },
+            { label: 'Sacks', align: 'right' },
+            { label: 'Total', align: 'right' },
+            { label: 'Status' },
+          ]}
+        >
+          {shown.map((o) => (
+            <tr key={o.id}>
+              <td className="num px-4 py-3 font-semibold text-soil-800">{o.order_no ?? '—'}</td>
+              <td className="num px-4 py-3 text-soil-600">{shortDate(o.created_at)}</td>
+              <td className="px-4 py-3 font-semibold">{o.products?.variety ?? 'Product'}</td>
+              <td className="px-4 py-3 text-soil-600">{o.products?.farms?.name ?? '—'}</td>
+              <td className="num px-4 py-3 text-right">{sacks(o.quantity)}</td>
+              <td className="num px-4 py-3 text-right font-bold text-brand-700">
+                {peso(o.total_price)}
+              </td>
+              <td className="px-4 py-3">
+                <StageBadge stage={effectiveStage(o)} />
+              </td>
+            </tr>
+          ))}
+        </DataTable>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {shown.map((o) => {

@@ -16,17 +16,7 @@ import {
 } from '@/components/ui'
 import { TopFarms } from '@/components/TopFarms'
 import { FarmProfileDialog } from '@/components/FarmProfileDialog'
-import {
-  CROPS,
-  CROP_EMOJI,
-  KG_PER_SACK,
-  availableSacks,
-  peso,
-  sacks,
-  titleCase,
-  toSacks,
-  weightNote,
-} from '@/lib/format'
+import { CROPS, CROP_EMOJI, KG_PER_SACK, availableSacks, peso, sacks, titleCase, toSacks } from '@/lib/format'
 import { friendlyError, validateSacks } from '@/lib/validation'
 import type { Product } from '@/lib/types'
 

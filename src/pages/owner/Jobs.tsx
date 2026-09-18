@@ -21,7 +21,6 @@ import type { AppStatus, JobApplication, JobCrop, JobPost, JobType } from '@/lib
 const JOB_TYPES: JobType[] = ['seasonal', 'part-time', 'full-time']
 const JOB_CROPS: JobCrop[] = ['rice', 'corn', 'watermelon', 'general']
 
-
 export default function OwnerJobs() {
   const { profile, farm } = useAuth()
   const [tab, setTab] = useState<'posts' | 'apps'>('posts')
@@ -320,6 +319,7 @@ function ApplicationsTab({
   )
 
   const [rejecting, setRejecting] = useState<JobApplication | null>(null)
+  const [viewingFiles, setViewingFiles] = useState<JobApplication | null>(null)
   const [reason, setReason] = useState('')
 
   async function decide(id: string, decision: AppStatus, note = '') {
@@ -342,6 +342,8 @@ function ApplicationsTab({
 
   return (
     <div className="space-y-4">
+      <Attachments application={viewingFiles} onClose={() => setViewingFiles(null)} />
+
       <Dialog
         open={rejecting !== null}
         onClose={() => setRejecting(null)}
@@ -431,7 +433,25 @@ function ApplicationsTab({
                 </div>
 
                 <p className="text-[13px] font-semibold text-soil-600">
-                  Applied for {a.job_posts?.title} · {relativeDate(a.applied_at)}
+                  Applied for {a.job_posts?.title}
+                  <span className="mt-0.5 block text-[12px] text-soil-400">
+                    {shortDate(a.applied_at)} · {relativeDate(a.applied_at)}
+                    {a.job_posts?.location ? ` · ${a.job_posts.location}` : ''}
+                  </span>
+                  {(a.resume_path || a.id_photo_path || (a.work_photo_paths ?? []).length > 0) && (
+                    <button
+                      onClick={() => setViewingFiles(a)}
+                      className="mt-1 text-[12px] font-semibold text-brand-700 hover:underline"
+                    >
+                      View attachments (
+                      {[
+                        a.resume_path ? 1 : 0,
+                        a.id_photo_path ? 1 : 0,
+                        (a.work_photo_paths ?? []).length,
+                      ].reduce((x, y) => x + y, 0)}
+                      )
+                    </button>
+                  )}
                 </p>
 
                 {a.message && (
@@ -709,6 +729,83 @@ function PostJobDialog({
           onChange={(e) => set('location', e.target.value)}
         />
       </form>
+    </Dialog>
+  )
+}
+
+function Attachments({
+  application,
+  onClose,
+}: {
+  application: JobApplication | null
+  onClose(): void
+}) {
+  const [urls, setUrls] = useState<{ label: string; url: string; pdf: boolean }[] | null>(null)
+
+  useEffect(() => {
+    if (!application) return
+    setUrls(null)
+
+    const paths: { label: string; path: string }[] = []
+    if (application.resume_path) paths.push({ label: 'Resume', path: application.resume_path })
+    if (application.id_photo_path) paths.push({ label: 'Valid ID', path: application.id_photo_path })
+    ;(application.work_photo_paths ?? []).forEach((p, i) =>
+      paths.push({ label: `Work photo ${i + 1}`, path: p }),
+    )
+
+    Promise.all(
+      paths.map(async (p) => {
+        const { data } = await supabase.storage.from('applications').createSignedUrl(p.path, 600)
+        return { label: p.label, url: data?.signedUrl ?? '', pdf: p.path.endsWith('.pdf') }
+      }),
+    ).then((r) => setUrls(r.filter((x) => x.url)))
+  }, [application?.id])
+
+  if (!application) return null
+
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title="Attachments"
+      description={application.profiles?.name ?? undefined}
+      footer={
+        <button className="btn-ghost" onClick={onClose}>
+          Close
+        </button>
+      }
+    >
+      {urls === null ? (
+        <Spinner label="Loading the files" />
+      ) : urls.length === 0 ? (
+        <Empty title="Nothing attached" body="This applicant did not upload any files." />
+      ) : (
+        <div className="space-y-4">
+          {urls.map((u) => (
+            <div key={u.url}>
+              <p className="mb-1.5 text-[12px] font-semibold uppercase tracking-wide text-soil-400">
+                {u.label}
+              </p>
+              {u.pdf ? (
+                <a
+                  href={u.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn-ghost w-full justify-center py-3"
+                >
+                  Open PDF
+                </a>
+              ) : (
+                <img
+                  src={u.url}
+                  alt={u.label}
+                  className="w-full rounded-lg border border-soil-200 bg-soil-50 object-contain"
+                />
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </Dialog>
   )
 }

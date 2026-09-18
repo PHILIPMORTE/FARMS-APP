@@ -616,7 +616,6 @@ function AddProductDialog({
     onSaved()
   }
 
-
   const total =
     /^\d+$/.test(form.quantity) && form.price !== ''
       ? parseInt(form.quantity, 10) * Number(form.price)

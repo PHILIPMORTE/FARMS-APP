@@ -1,11 +1,18 @@
 import { useEffect, useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
+import { supabase } from '@/lib/supabase'
 import { Dialog } from '@/components/ui'
 import { useAuth } from '@/context/AuthContext'
 import { ROLE_HOME, ROLE_LABEL } from '@/lib/format'
 import type { Role } from '@/lib/types'
-import { friendlyError, validateName, validatePassword, validatePhone } from '@/lib/validation'
+import {
+  friendlyError,
+  normalisePhone,
+  validateName,
+  validatePassword,
+  validatePhone,
+} from '@/lib/validation'
 
 const BLURB: Record<Role, string> = {
   owner: 'Manage your farm, crops, market listings and finances',
@@ -23,6 +30,12 @@ const NEXT_ROLE: Record<Role, { role: Role; label: string }> = {
 
 type Errors = Record<string, string | null>
 
+interface RegistrationStatus {
+  taken: boolean
+  other_roles: string[]
+  verification: string
+}
+
 export default function LoginPage({ role }: { role: Role }) {
   const { session, profile, signInWithPhone, registerWithPhone, signInWithGoogle, sendPasswordReset } =
     useAuth()
@@ -32,6 +45,7 @@ export default function LoginPage({ role }: { role: Role }) {
   const [busy, setBusy] = useState(false)
   const [agreed, setAgreed] = useState(false)
   const [privacyOpen, setPrivacyOpen] = useState(false)
+  const [existing, setExisting] = useState<RegistrationStatus | null>(null)
   const [errors, setErrors] = useState<Errors>({})
   const [form, setForm] = useState({ name: '', phone: '', password: '', confirm: '' })
 
@@ -75,6 +89,7 @@ export default function LoginPage({ role }: { role: Role }) {
 
   async function onRegister(e: React.FormEvent) {
     e.preventDefault()
+    setExisting(null)
     if (!agreed) {
       setErrors({ form: 'Please read and agree to the Data Privacy Notice first.' })
       return
@@ -94,7 +109,15 @@ export default function LoginPage({ role }: { role: Role }) {
       toast.success(`${ROLE_LABEL[role]} account created`)
       navigate(ROLE_HOME[role], { replace: true })
     } catch (err) {
-      setErrors({ form: friendlyError(err) })
+      const msg = friendlyError(err)
+      if (/already registered as|already has an account/i.test(msg)) {
+        const { data } = await supabase.rpc('registration_status', {
+          p_phone: normalisePhone(form.phone),
+          p_role: role,
+        })
+        setExisting((data as RegistrationStatus) ?? null)
+      }
+      setErrors({ form: msg })
     } finally {
       setBusy(false)
     }
@@ -176,6 +199,55 @@ export default function LoginPage({ role }: { role: Role }) {
                 </button>
               ))}
             </div>
+
+            {existing?.taken && (
+              <div className="mt-4 rounded-xl border-2 border-amber-300 bg-amber-50 px-4 py-3.5">
+                <p className="text-[14px] font-bold text-amber-900">
+                  This number already has a {ROLE_LABEL[role]} account
+                </p>
+
+                <p className="mt-1 text-[13px] leading-relaxed text-amber-800">
+                  {existing.verification === 'approved'
+                    ? 'It is already verified, so you can sign in with your password.'
+                    : existing.verification === 'pending'
+                      ? 'It is waiting for an administrator to review the verification. Sign in to check the status.'
+                      : existing.verification === 'rejected'
+                        ? 'The last verification was not approved. Sign in and submit your details again.'
+                        : 'Sign in to finish setting it up.'}
+                </p>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className="btn-sm bg-amber-600 text-white hover:bg-amber-700"
+                    onClick={() => {
+                      setExisting(null)
+                      setErrors({})
+                      switchTab('signin')
+                    }}
+                  >
+                    Sign in instead
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-sm border border-amber-300 text-amber-900 hover:bg-amber-100"
+                    onClick={onForgot}
+                  >
+                    Reset my password
+                  </button>
+                </div>
+
+                {Array.isArray(existing.other_roles) && existing.other_roles.length > 0 && (
+                  <p className="mt-2.5 text-[12px] text-amber-800">
+                    This number is also registered as{' '}
+                    {existing.other_roles
+                      .map((r) => ROLE_LABEL[r as Role])
+                      .join(' and ')}
+                    .
+                  </p>
+                )}
+              </div>
+            )}
 
             {errors.form && (
               <div

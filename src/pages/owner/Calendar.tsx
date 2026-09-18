@@ -2,18 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
-import {
-  Dialog,
-  Empty,
-  Field,
-  PesoInput,
-  SackInput,
-  Select,
-  Spinner,
-  Stat,
-  TextArea,
-  ViewToggle,
-} from '@/components/ui'
+import { Dialog, Field, PesoInput, SackInput, Select, Spinner, TextArea, ViewToggle } from '@/components/ui'
 import {
   CROPS,
   CROP_COLOR,
@@ -465,7 +454,6 @@ function CalendarView({
                     ))}
                   </span>
                 )}
-
 
                 {!isPast && (
                   <button
@@ -1043,7 +1031,6 @@ function AddPlantingDialog({
             </p>
           </div>
         )}
-
 
         <div className="flex items-center gap-3 rounded-lg bg-brand-50 px-4 py-3">
           <span className="text-xl">🌱</span>

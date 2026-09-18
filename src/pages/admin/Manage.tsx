@@ -13,19 +13,7 @@ import {
   TextArea,
 } from '@/components/ui'
 import { StageBadge } from '@/components/OrderTimeline'
-import {
-  CROP_EMOJI,
-  ORDER_STAGES,
-  ROLE_LABEL,
-  effectiveStage,
-  isFinishedOrder,
-  STAGE_LABEL,
-  peso,
-  pesoShort,
-  sacks,
-  shortDate,
-  titleCase,
-} from '@/lib/format'
+import { CROP_EMOJI, ORDER_STAGES, ROLE_LABEL, effectiveStage, isFinishedOrder, peso, pesoShort, sacks, shortDate } from '@/lib/format'
 import { displayPhone } from '@/lib/validation'
 import type { Order, Product, Profile, Role } from '@/lib/types'
 

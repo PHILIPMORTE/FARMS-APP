@@ -3,8 +3,7 @@ import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { Empty, SectionHeading, Spinner, Stat } from '@/components/ui'
-import { hours, shortDate,
-  todayISO, peso } from '@/lib/format'
+import { hours, todayISO, peso } from '@/lib/format'
 import { friendlyError } from '@/lib/validation'
 import type { AttendanceRow } from '@/lib/types'
 
@@ -18,7 +17,6 @@ interface ActiveJob {
   end_time: string
   clocked: boolean
 }
-
 
 function toMinutes(t: string | null | undefined): number | null {
   if (!t) return null
@@ -36,7 +34,6 @@ function clockLabel(t: string | null | undefined): string {
   const hour = h % 12 === 0 ? 12 : h % 12
   return `${hour}:${String(m).padStart(2, '0')} ${period}`
 }
-
 
 interface OpenShift {
   id: string
@@ -253,7 +250,6 @@ export default function FarmerLogs() {
                 {busy ? 'Recording…' : 'Time Out'}
               </button>
             </div>
-
 
           </>
         ) : (

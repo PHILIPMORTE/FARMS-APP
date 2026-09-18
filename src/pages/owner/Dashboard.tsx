@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { Empty, SectionHeading, Select, Spinner, Stat } from '@/components/ui'
 import { MyFarmRank, TopFarms } from '@/components/TopFarms'
-import { CROPS, CROP_EMOJI, peso, pesoShort, relativeDate, sacks, titleCase, weightNote } from '@/lib/format'
+import { CROPS, CROP_EMOJI, pesoShort, relativeDate, sacks, titleCase, weightNote } from '@/lib/format'
 import type { Crop, InventoryItem } from '@/lib/types'
 
 interface Snapshot {

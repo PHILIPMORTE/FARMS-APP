@@ -66,7 +66,6 @@ export function AppShell({ role }: { role: Role }) {
   const menuRef = useRef<HTMLDivElement>(null)
   const items = NAV[role]
 
-
   useEffect(() => {
     document.documentElement.setAttribute('data-role', role)
     return () => document.documentElement.removeAttribute('data-role')
@@ -92,7 +91,6 @@ export function AppShell({ role }: { role: Role }) {
     toast.success('Signed out')
     navigate('/', { replace: true })
   }
-
 
   return (
     <div className="min-h-screen">

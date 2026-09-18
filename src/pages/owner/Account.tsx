@@ -98,6 +98,13 @@ export default function OwnerAccount() {
 
       <AccountHeader subtitle={farm?.name} />
 
+      {profile && (
+        <section>
+          <SectionHeading>Your rating from buyers</SectionHeading>
+          <RatingBadge profileId={profile.id} />
+        </section>
+      )}
+
       <form onSubmit={save} className="space-y-5" noValidate>
         <section>
           <SectionHeading>Your details</SectionHeading>
