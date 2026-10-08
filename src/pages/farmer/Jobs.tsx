@@ -262,6 +262,14 @@ export default function FarmerJobs() {
                 value={String(Math.max(0, details.slots - details.filled_slots))}
               />
               <Row label="Location" value={details.location} />
+              <Row
+                label="Time clock"
+                value={
+                  details.location
+                    ? `You may record time in and out only while inside ${details.location}.`
+                    : 'Set by the farm owner.'
+                }
+              />
               <Row label="Starts" value={shortDate(details.start_date)} />
               {details.end_date && <Row label="Ends" value={shortDate(details.end_date)} />}
             </dl>

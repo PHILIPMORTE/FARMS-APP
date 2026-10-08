@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
-import { PurokSelect } from '@/components/PurokSelect'
+import { PurokSelect, usePuroks } from '@/components/PurokSelect'
 import { useAuth } from '@/context/AuthContext'
 import {
   Badge,
@@ -562,6 +562,8 @@ function PostJobDialog({
   })
   const [errors, setErrors] = useState<Record<string, string | null>>({})
   const [busy, setBusy] = useState(false)
+  const puroks = usePuroks()
+  const purokName = (id: string) => puroks.find((p) => p.id === id)?.name ?? ''
 
   const set = (k: string, v: string) => {
     setForm((f) => ({ ...f, [k]: v }))
@@ -576,7 +578,6 @@ function PostJobDialog({
       wage: validateAmount(form.wage, 'daily wage'),
 
       slots: validateWholeNumber(form.slots, 1, 'number of slots'),
-      location: validateRequired(form.location, 'Location'),
       start_date: form.start_date ? null : 'Pick a start date.',
       end_date:
         form.end_date && form.end_date < form.start_date
@@ -596,7 +597,7 @@ function PostJobDialog({
       type: form.type,
       wage: Number(form.wage),
       slots: parseInt(form.slots, 10),
-      location: form.location.trim(),
+      location: purokName(form.purok_id) || defaultLocation,
       purok_id: form.purok_id || null,
       start_date: form.start_date,
       end_date: form.end_date || null,
@@ -726,20 +727,13 @@ function PostJobDialog({
         </div>
 
         <PurokSelect
-          label="Which purok is the work in?"
+          label="Where is the work located?"
           value={form.purok_id}
           error={errors.purok_id}
           onChange={(id) => set('purok_id', id)}
           hint="Workers can record time in and out only while inside this purok."
         />
 
-        <Field
-          label="Location"
-          placeholder="Barangay, city or municipality"
-          value={form.location}
-          error={errors.location}
-          onChange={(e) => set('location', e.target.value)}
-        />
       </form>
     </Dialog>
   )
