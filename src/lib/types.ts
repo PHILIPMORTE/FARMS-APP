@@ -91,9 +91,7 @@ export interface JobApplication {
   farmer_id: string
   status: AppStatus
   message: string | null
-  resume_path: string | null
   id_photo_path: string | null
-  work_photo_paths: string[]
   employment_status: string
   ended_at: string | null
   end_reason: string | null

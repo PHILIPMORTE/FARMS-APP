@@ -190,3 +190,21 @@
     }
   }
 }
+
+
+/* Purok name shown in the middle of the mapped area on the time clock. */
+.purok-label {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: #1f2937;
+  font-weight: 700;
+  font-size: 13px;
+  text-shadow:
+    0 0 3px #fff, 0 0 3px #fff, 0 0 3px #fff, 0 0 3px #fff;
+}
+.purok-label::before { display: none; }
+
+/* Leaflet draws above the page but must stay under dialogs. */
+.leaflet-container { z-index: 0; }
+.leaflet-pane { z-index: 0; }

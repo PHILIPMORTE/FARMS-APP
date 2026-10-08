@@ -311,9 +311,7 @@ function ApplyDialog({
   onApplied(): void
 }) {
   const [message, setMessage] = useState('')
-  const [resume, setResume] = useState<File | null>(null)
   const [idFile, setIdFile] = useState<File | null>(null)
-  const [workPhotos, setWorkPhotos] = useState<File[]>([])
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -323,9 +321,7 @@ function ApplyDialog({
   async function submit() {
     if (!job) return
     setBusy(true)
-    let resumePath: string | null = null
     let idPath: string | null = null
-    const workPaths: string[] = []
 
     const { data: sess } = await supabase.auth.getSession()
     const uid = sess.session?.user.id
@@ -341,9 +337,7 @@ function ApplyDialog({
     }
 
     try {
-      if (resume) resumePath = await upload(resume, 'resume')
       if (idFile) idPath = await upload(idFile, 'id')
-      for (const w of workPhotos) workPaths.push(await upload(w, 'work'))
     } catch (err) {
       setBusy(false)
       toast.error(String((err as Error).message))
@@ -354,9 +348,7 @@ function ApplyDialog({
       job_id: job.id,
       farmer_id: farmerId,
       message: message.trim() || null,
-      resume_path: resumePath,
       id_photo_path: idPath,
-      work_photo_paths: workPaths,
       status: 'pending',
     })
     setBusy(false)
@@ -395,20 +387,10 @@ function ApplyDialog({
       />
 
       <div className="space-y-3 rounded-xl border border-soil-200 p-4">
-        <p className="text-[13px] font-bold text-soil-800">Attachments (optional)</p>
+        <p className="text-[13px] font-bold text-soil-800">Valid ID (optional)</p>
         <p className="text-[12px] leading-relaxed text-soil-600">
-          A resume and a valid ID help the farm owner decide. Photos of past farm work are useful
-          if you have them.
+          A photograph of any government ID helps the farm owner confirm who you are.
         </p>
-
-        <FilePick
-          id="resume"
-          label="Resume"
-          hint="PDF or a clear photo"
-          accept="application/pdf,image/*"
-          file={resume}
-          onPick={setResume}
-        />
 
         <FilePick
           id="appid"
@@ -418,26 +400,8 @@ function ApplyDialog({
           file={idFile}
           onPick={setIdFile}
         />
-
-        <div>
-          <label className="label" htmlFor="workphotos">
-            Photos of your farm work
-          </label>
-          <input
-            id="workphotos"
-            type="file"
-            accept="image/*"
-            multiple
-            className="field text-[13px]"
-            onChange={(e) => setWorkPhotos(Array.from(e.target.files ?? []).slice(0, 4))}
-          />
-          {workPhotos.length > 0 && (
-            <p className="mt-1 text-[12px] text-soil-600">
-              {workPhotos.length} photo{workPhotos.length === 1 ? '' : 's'} attached
-            </p>
-          )}
-        </div>
       </div>
+
       <p className="mt-2 text-[13px] text-soil-400">
         Optional, but a short note helps. The farm can also see your skills and availability from
         your account.

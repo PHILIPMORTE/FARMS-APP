@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
+import { PurokMap } from '@/components/PurokMap'
 import { useAuth } from '@/context/AuthContext'
 import { Empty, SectionHeading, Spinner, Stat } from '@/components/ui'
 import { hours, todayISO, peso } from '@/lib/format'
@@ -387,6 +388,25 @@ export default function FarmerLogs() {
           )}
         </div>
       )}
+
+      {(inFenced || outFenced) && (() => {
+        const pl = shift ? outPlace : inPlace
+        const ok = shift ? canTimeOut : canTimeIn
+        if (!pl) return null
+        return (
+          <PurokMap
+            boundary={pl.purok_boundary}
+            purokName={pl.purok_name}
+            here={here}
+            inside={ok}
+            farm={
+              pl.latitude != null && pl.longitude != null
+                ? { lat: Number(pl.latitude), lng: Number(pl.longitude), name: pl.farm_name }
+                : null
+            }
+          />
+        )
+      })()}
 
       <div className="card p-6 text-center">
         <p className="text-[12px] font-semibold uppercase tracking-wide text-soil-400">

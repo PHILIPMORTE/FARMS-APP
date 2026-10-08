@@ -439,18 +439,12 @@ function ApplicationsTab({
                     {shortDate(a.applied_at)} · {relativeDate(a.applied_at)}
                     {a.job_posts?.location ? ` · ${a.job_posts.location}` : ''}
                   </span>
-                  {(a.resume_path || a.id_photo_path || (a.work_photo_paths ?? []).length > 0) && (
+                  {a.id_photo_path && (
                     <button
                       onClick={() => setViewingFiles(a)}
                       className="mt-1 text-[12px] font-semibold text-brand-700 hover:underline"
                     >
-                      View attachments (
-                      {[
-                        a.resume_path ? 1 : 0,
-                        a.id_photo_path ? 1 : 0,
-                        (a.work_photo_paths ?? []).length,
-                      ].reduce((x, y) => x + y, 0)}
-                      )
+                      View valid ID
                     </button>
                   )}
                 </p>
@@ -753,11 +747,7 @@ function Attachments({
     setUrls(null)
 
     const paths: { label: string; path: string }[] = []
-    if (application.resume_path) paths.push({ label: 'Resume', path: application.resume_path })
     if (application.id_photo_path) paths.push({ label: 'Valid ID', path: application.id_photo_path })
-    ;(application.work_photo_paths ?? []).forEach((p, i) =>
-      paths.push({ label: `Work photo ${i + 1}`, path: p }),
-    )
 
     Promise.all(
       paths.map(async (p) => {
