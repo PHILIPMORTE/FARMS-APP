@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
+import { PurokFromPin, PurokSelect } from '@/components/PurokSelect'
 import { useAuth } from '@/context/AuthContext'
 import { Dialog, Field, PesoInput, SackInput, Select, Spinner, TextArea, ViewToggle } from '@/components/ui'
 import {
@@ -719,9 +720,7 @@ function AddPlantingDialog({
     customVariety: '',
     seed_kg: '',
     note: '',
-    field_name: '',
-    field_lat: '',
-    field_lng: '',
+    purok_id: '',
   })
 
   useEffect(() => {
@@ -732,9 +731,7 @@ function AddPlantingDialog({
       customVariety: '',
       seed_kg: '',
       note: '',
-      field_name: '',
-      field_lat: '',
-      field_lng: '',
+            purok_id: '',
     })
     setErrors({})
   }, [date])
@@ -750,7 +747,6 @@ function AddPlantingDialog({
   } | null>(null)
   const [errors, setErrors] = useState<Record<string, string | null>>({})
   const [busy, setBusy] = useState(false)
-  const [locatingField, setLocatingField] = useState(false)
 
   const set = (k: string, v: string) => {
     setForm((f) => ({ ...f, [k]: v }))
@@ -835,7 +831,7 @@ function AddPlantingDialog({
           ? validateRequired(form.customVariety, 'Variety name')
           : null,
       seed_kg: Number(form.seed_kg) > 0 ? null : 'Enter the seed weight in kilograms.',
-      field_name: form.field_name.trim() ? null : 'Say where on the farm this is planted.',
+      purok_id: form.purok_id ? null : 'Choose the purok where the farm is located.',
     }
     setErrors(next)
     if (Object.values(next).some(Boolean)) return
@@ -848,7 +844,6 @@ function AddPlantingDialog({
       p_planting_date: plantingDate,
       p_seed_kg: Number(form.seed_kg),
       p_note: form.note.trim(),
-      p_field_name: form.field_name.trim(),
     })
     setBusy(false)
 
@@ -939,72 +934,13 @@ function AddPlantingDialog({
           />
         </div>
 
-        <Field
-          label="Where on the farm?"
-          placeholder="e.g. north field, lot 2, riverside plot"
-          value={form.field_name}
-          error={errors.field_name}
-          onChange={(e) => set('field_name', e.target.value)}
+        <PurokSelect
+          label="Where is the farm located?"
+          value={form.purok_id}
+          error={errors.purok_id}
+          onChange={(id) => set('purok_id', id)}
+          hint="Lets the barangay see which puroks are planting what."
         />
-
-        <div>
-          <label className="label" htmlFor="fieldname">
-            Which field is this?
-          </label>
-          <input
-            id="fieldname"
-            className="field"
-            placeholder="e.g. North field, Lot 2, beside the river"
-            value={form.field_name}
-            onChange={(e) => set('field_name', e.target.value)}
-          />
-
-          <button
-            type="button"
-            className="btn-ghost mt-2 w-full py-2 text-[13px]"
-            disabled={locatingField}
-            onClick={() => {
-              if (!navigator.geolocation) {
-                toast.error('This device cannot share its location.')
-                return
-              }
-              setLocatingField(true)
-              navigator.geolocation.getCurrentPosition(
-                (pos) => {
-                  set('field_lat', pos.coords.latitude.toFixed(6))
-                  set('field_lng', pos.coords.longitude.toFixed(6))
-                  setLocatingField(false)
-                  toast.success('Field location captured')
-                },
-                () => {
-                  setLocatingField(false)
-                  toast.error('Could not read your location.')
-                },
-                { enableHighAccuracy: true, timeout: 10000 },
-              )
-            }}
-          >
-            {locatingField ? 'Finding you…' : '📍 Pin this field where I am standing'}
-          </button>
-
-          {form.field_lat && form.field_lng && (
-            <div className="mt-2 flex items-center justify-between gap-3 rounded-lg bg-brand-50 px-3.5 py-2.5">
-              <span className="num text-[12px] text-brand-900">
-                {Number(form.field_lat).toFixed(5)}, {Number(form.field_lng).toFixed(5)}
-              </span>
-              <button
-                type="button"
-                onClick={() => {
-                  set('field_lat', '')
-                  set('field_lng', '')
-                }}
-                className="text-[12px] font-semibold text-red-600 hover:underline"
-              >
-                Clear
-              </button>
-            </div>
-          )}
-        </div>
 
         {form.variety === '__other' && (
           <Field
@@ -1267,8 +1203,7 @@ function DetailDialog({
                     : '—'
                 }
               />
-              <Row label="Where" value={schedule.field_name || '—'} />
-              <Row label="Field" value={schedule.field_name || 'Not set'} />
+              <Row label="Purok" value={schedule.field_name || '—'} />
               <Row label="Seed used" value={`${schedule.seed_kg} kg`} />
               <Row label="Expected sacks" value={`${sacks(schedule.expected_sacks)} sacks`} />
               <Row label="Expected weight" value={`${schedule.expected_sacks * 25} kg`} />

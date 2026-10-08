@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import { useAuth, isPhoneTakenForRole } from '@/context/AuthContext'
 import { AccountHeader } from '@/components/AccountHeader'
+import { PurokFromPin, PurokSelect } from '@/components/PurokSelect'
 import { RatingBadge } from '@/components/Ratings'
 import { Field, SectionHeading, Spinner } from '@/components/ui'
 import { friendlyError, normalisePhone, validateName, validatePhone } from '@/lib/validation'
@@ -22,6 +23,8 @@ export default function OwnerAccount() {
       farm_name: farm?.name ?? '',
       address: farm?.address ?? '',
       city: farm?.city ?? '',
+      clock_radius_m: farm?.clock_radius_m != null ? String(farm.clock_radius_m) : '300',
+      purok_id: farm?.purok_id ?? '',
       latitude: farm?.latitude != null ? String(farm.latitude) : '',
       longitude: farm?.longitude != null ? String(farm.longitude) : '',
       province: farm?.province ?? '',
@@ -67,6 +70,8 @@ export default function OwnerAccount() {
           name: form.farm_name.trim() || 'My Farm',
           address: form.address.trim(),
           city: form.city.trim(),
+        clock_radius_m: form.clock_radius_m ? Number(form.clock_radius_m) : 300,
+        purok_id: form.purok_id || null,
         latitude: form.latitude ? Number(form.latitude) : null,
         longitude: form.longitude ? Number(form.longitude) : null,
           province: form.province.trim(),

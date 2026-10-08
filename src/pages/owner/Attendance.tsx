@@ -276,6 +276,7 @@ export default function OwnerAttendance() {
                 <th className="px-4 py-2.5 font-semibold">Date</th>
                 <th className="px-4 py-2.5 font-semibold">Worker</th>
                 <th className="px-4 py-2.5 font-semibold">Task</th>
+                <th className="px-4 py-2.5 font-semibold">On site</th>
                 <th className="px-4 py-2.5 font-semibold">Time in</th>
                 <th className="px-4 py-2.5 font-semibold">Time out</th>
                 <th className="px-4 py-2.5 font-semibold">Status</th>
@@ -295,6 +296,22 @@ export default function OwnerAttendance() {
                     <td className="px-4 py-2.5 font-semibold">{r.profiles?.name ?? '—'}</td>
                     <td className="px-4 py-2.5 text-soil-600">
                       {r.task || r.job_posts?.title || '—'}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      {r.in_distance_m == null ? (
+                        <span className="text-[12px] text-soil-400">—</span>
+                      ) : (
+                        <span
+                          className={`chip ${
+                            r.in_distance_m <= 300
+                              ? 'bg-green-100 text-green-800'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}
+                          title={`Timed in about ${r.in_distance_m} m from the farm`}
+                        >
+                          {r.in_distance_m} m
+                        </span>
+                      )}
                     </td>
                     <td className="num px-4 py-2.5">{clockTime(r.time_in)}</td>
                     <td className="num px-4 py-2.5">
@@ -383,7 +400,7 @@ export default function OwnerAttendance() {
             </tbody>
             <tfoot className="border-t-2 border-soil-200 bg-soil-50 font-bold">
               <tr>
-                <td className="px-4 py-2.5" colSpan={7}>
+                <td className="px-4 py-2.5" colSpan={8}>
                   Total
                 </td>
                 <td className="num px-4 py-2.5 text-right">{hours(totals.hours)}</td>

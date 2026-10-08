@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
+import { PurokSelect } from '@/components/PurokSelect'
 import { useAuth } from '@/context/AuthContext'
 import {
   Badge,
@@ -554,6 +555,7 @@ function PostJobDialog({
     type: 'seasonal' as JobType,
     wage: '',
     slots: '',
+    purok_id: '',
     location: defaultLocation,
     start_date: todayISO(),
     end_date: '',
@@ -570,6 +572,7 @@ function PostJobDialog({
     e.preventDefault()
     const next = {
       title: validateRequired(form.title, 'Job title'),
+      purok_id: form.purok_id ? null : 'Choose the purok where the work is.',
       wage: validateAmount(form.wage, 'daily wage'),
 
       slots: validateWholeNumber(form.slots, 1, 'number of slots'),
@@ -594,6 +597,7 @@ function PostJobDialog({
       wage: Number(form.wage),
       slots: parseInt(form.slots, 10),
       location: form.location.trim(),
+      purok_id: form.purok_id || null,
       start_date: form.start_date,
       end_date: form.end_date || null,
       status: 'open',
@@ -720,6 +724,14 @@ function PostJobDialog({
             )}
           </div>
         </div>
+
+        <PurokSelect
+          label="Which purok is the work in?"
+          value={form.purok_id}
+          error={errors.purok_id}
+          onChange={(id) => set('purok_id', id)}
+          hint="Workers can record time in and out only while inside this purok."
+        />
 
         <Field
           label="Location"

@@ -35,6 +35,51 @@ function clockLabel(t: string | null | undefined): string {
   return `${hour}:${String(m).padStart(2, '0')} ${period}`
 }
 
+interface JobPlace {
+  job_id: string
+  farm_id: string
+  farm_name: string
+  latitude: number | null
+  longitude: number | null
+  radius_m: number
+  require_gps: boolean
+  max_accuracy_m: number
+  purok_id: string | null
+  purok_name: string | null
+  purok_boundary: number[][] | null
+}
+
+/** Ray casting, the same test the database performs before accepting a record. */
+function insideBoundary(lat: number, lng: number, ring: number[][]): boolean {
+  if (!ring || ring.length < 3) return false
+  let inside = false
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i]
+    const [xj, yj] = ring[j]
+    if (yi > lat !== yj > lat && lng < ((xj - xi) * (lat - yi)) / (yj - yi || 1e-12) + xi) {
+      inside = !inside
+    }
+  }
+  return inside
+}
+
+function metresBetween(
+  aLat: number,
+  aLng: number,
+  bLat: number,
+  bLng: number,
+): number {
+  const R = 6371000
+  const p1 = (aLat * Math.PI) / 180
+  const p2 = (bLat * Math.PI) / 180
+  const dp = ((bLat - aLat) * Math.PI) / 180
+  const dl = ((bLng - aLng) * Math.PI) / 180
+  const x =
+    Math.sin(dp / 2) * Math.sin(dp / 2) +
+    Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) * Math.sin(dl / 2)
+  return Math.round(R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x)))
+}
+
 interface OpenShift {
   id: string
   time_in: string
@@ -46,6 +91,7 @@ interface OpenShift {
   end_time: string | null
   break_started_at: string | null
   break_minutes: number
+  job_id: string | null
 }
 
 function clock(iso: string | null): string {
@@ -71,6 +117,9 @@ export default function FarmerLogs() {
   const [shift, setShift] = useState<OpenShift | null>(null)
   const [jobs, setJobs] = useState<ActiveJob[]>([])
   const [jobId, setJobId] = useState('')
+  const [places, setPlaces] = useState<JobPlace[]>([])
+  const [here, setHere] = useState<{ lat: number; lng: number; acc: number } | null>(null)
+  const [geoError, setGeoError] = useState<string | null>(null)
   const [today, setToday] = useState<AttendanceRow[]>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -80,6 +129,9 @@ export default function FarmerLogs() {
     if (!profile) return
     const { data } = await supabase.rpc('my_open_shift')
     setShift((data as OpenShift | null) ?? null)
+
+    const { data: pl } = await supabase.rpc('my_job_locations')
+    setPlaces((pl as JobPlace[]) ?? [])
 
     const { data: js } = await supabase.rpc('my_active_jobs')
     const list = (js as ActiveJob[]) ?? []
@@ -108,13 +160,60 @@ export default function FarmerLogs() {
     return () => clearInterval(t)
   }, [])
 
+  useEffect(() => {
+    if (!navigator.geolocation) {
+      setGeoError('This device cannot share its location.')
+      return
+    }
+    const watch = navigator.geolocation.watchPosition(
+      (p) => {
+        setHere({ lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy })
+        setGeoError(null)
+      },
+      () => setGeoError('Location is off. Turn it on to time in or out.'),
+      { enableHighAccuracy: true, maximumAge: 15000, timeout: 20000 },
+    )
+    return () => navigator.geolocation.clearWatch(watch)
+  }, [])
+
+  function getPosition(): Promise<GeolocationPosition> {
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        reject(new Error('This device cannot share its location.'))
+        return
+      }
+      navigator.geolocation.getCurrentPosition(resolve, () =>
+        reject(
+          new Error(
+            'Location is off. Turn it on and allow this site, so the farm can confirm you are on site.',
+          ),
+        ),
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+      )
+    })
+  }
+
   async function timeIn() {
     if (!jobId) {
       toast.error('Choose the farm you are working at.')
       return
     }
+
     setBusy(true)
-    const { error } = await supabase.rpc('farmer_time_in', { p_job_id: jobId })
+    let pos: GeolocationPosition
+    try {
+      pos = await getPosition()
+    } catch (err) {
+      setBusy(false)
+      toast.error(String((err as Error).message))
+      return
+    }
+
+    const { error } = await supabase.rpc('farmer_time_in', {
+      p_job_id: jobId,
+      p_latitude: pos.coords.latitude,
+      p_longitude: pos.coords.longitude,
+    })
     setBusy(false)
     if (error) {
       toast.error(friendlyError(error))
@@ -150,7 +249,19 @@ export default function FarmerLogs() {
 
   async function timeOut() {
     setBusy(true)
-    const { error } = await supabase.rpc('farmer_time_out')
+    let pos: GeolocationPosition
+    try {
+      pos = await getPosition()
+    } catch (err) {
+      setBusy(false)
+      toast.error(String((err as Error).message))
+      return
+    }
+
+    const { error } = await supabase.rpc('farmer_time_out', {
+      p_latitude: pos.coords.latitude,
+      p_longitude: pos.coords.longitude,
+    })
     setBusy(false)
     if (error) {
       toast.error(friendlyError(error))
@@ -173,8 +284,31 @@ export default function FarmerLogs() {
 
   const selected = jobs.find((j) => j.job_id === jobId) ?? null
 
-  const canTimeIn = true
-  const canTimeOut = true
+  const placeFor = (jid: string | null | undefined) =>
+    places.find((p) => p.job_id === jid) ?? null
+
+  const inPlace = placeFor(jobId)
+  const outPlace = placeFor(shift?.job_id)
+
+  function distanceTo(pl: JobPlace | null): number | null {
+    if (!pl || pl.latitude == null || pl.longitude == null || !here) return null
+    return metresBetween(here.lat, here.lng, Number(pl.latitude), Number(pl.longitude))
+  }
+
+  const inDistance = distanceTo(inPlace)
+  const outDistance = distanceTo(outPlace)
+
+  const hasPurok = (pl: JobPlace | null) =>
+    !!(pl?.purok_boundary && pl.purok_boundary.length >= 3)
+
+  const inPurok = (pl: JobPlace | null) =>
+    !!(hasPurok(pl) && here && insideBoundary(here.lat, here.lng, pl!.purok_boundary!))
+
+  const inFenced = !!(inPlace && (hasPurok(inPlace) || inPlace.latitude != null))
+  const outFenced = !!(outPlace && (hasPurok(outPlace) || outPlace.latitude != null))
+
+  const canTimeIn = !inFenced || (inDistance != null && inDistance <= (inPlace?.radius_m ?? 300))
+  const canTimeOut = !outFenced || (outDistance != null && outDistance <= (outPlace?.radius_m ?? 300))
 
   return (
     <div className="animate-fade-up space-y-6">
@@ -185,6 +319,74 @@ export default function FarmerLogs() {
           once the day is done.
         </p>
       </div>
+
+      {(inFenced || outFenced) && (
+        <div
+          className={`rounded-xl border px-4 py-3.5 ${
+            geoError
+              ? 'border-red-200 bg-red-50'
+              : (shift ? canTimeOut : canTimeIn)
+                ? 'border-green-200 bg-green-50'
+                : 'border-amber-200 bg-amber-50'
+          }`}
+        >
+          {geoError ? (
+            <p className="text-[13px] font-semibold text-red-700">{geoError}</p>
+          ) : here === null ? (
+            <p className="text-[13px] text-soil-600">Finding where you are…</p>
+          ) : (
+            (() => {
+              const pl = shift ? outPlace : inPlace
+              const d = shift ? outDistance : inDistance
+              const ok = shift ? canTimeOut : canTimeIn
+              const fencedByPurok = hasPurok(pl)
+              return (
+                <>
+                  <p
+                    className={`text-[14px] font-bold ${
+                      ok ? 'text-green-800' : 'text-amber-900'
+                    }`}
+                  >
+                    {fencedByPurok
+                      ? ok
+                        ? `You are inside ${pl?.purok_name}`
+                        : `You are not inside ${pl?.purok_name}`
+                      : ok
+                        ? `You are at ${pl?.farm_name}`
+                        : `You are not at ${pl?.farm_name} yet`}
+                  </p>
+                  <p
+                    className={`mt-0.5 text-[13px] leading-relaxed ${
+                      ok ? 'text-green-700' : 'text-amber-800'
+                    }`}
+                  >
+                    {fencedByPurok ? (
+                      ok ? (
+                        <>This job is in {pl?.purok_name}, and you are standing in it.</>
+                      ) : (
+                        <>
+                          This job is in {pl?.purok_name}. You can record your time only from
+                          inside that purok.
+                        </>
+                      )
+                    ) : (
+                      <>
+                        About <span className="num font-semibold">{d} m</span> away.{' '}
+                        {ok
+                          ? 'You are close enough to record your time.'
+                          : `Move within ${pl?.radius_m} m of the farm.`}
+                      </>
+                    )}
+                    <span className="block text-[11px] opacity-70">
+                      Location accurate to about {Math.round(here.acc)} m
+                    </span>
+                  </p>
+                </>
+              )
+            })()
+          )}
+        </div>
+      )}
 
       <div className="card p-6 text-center">
         <p className="text-[12px] font-semibold uppercase tracking-wide text-soil-400">

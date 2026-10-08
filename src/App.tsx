@@ -35,6 +35,7 @@ import { AdminDashboard, AdminVerifications } from '@/pages/admin/Dashboard'
 import { AdminUsers, AdminCatalog, AdminOrders } from '@/pages/admin/Manage'
 import { AdminRequests, RequestAdminAccess } from '@/pages/admin/Requests'
 import AdminAccount from '@/pages/admin/Account'
+import AdminPuroks from '@/pages/admin/Puroks'
 
 import BuyerMarket from '@/pages/buyer/Market'
 import BuyerOrders from '@/pages/buyer/Orders'
@@ -140,6 +141,7 @@ export default function App() {
           <Route path="verifications" element={<AdminVerifications />} />
           <Route path="users" element={<AdminUsers />} />
           <Route path="account" element={<AdminAccount />} />
+          <Route path="puroks" element={<AdminPuroks />} />
           <Route path="requests" element={<AdminRequests />} />
           <Route path="catalog" element={<AdminCatalog />} />
           <Route path="orders" element={<AdminOrders />} />

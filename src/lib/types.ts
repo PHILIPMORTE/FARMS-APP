@@ -42,8 +42,10 @@ export interface Farm {
   owner_id: string
   name: string
   standard_hours?: number
+  purok_id?: string | null
   latitude?: number | null
   longitude?: number | null
+  clock_radius_m?: number
   address: string | null
   city: string | null
   province: string | null
@@ -253,6 +255,8 @@ export interface AttendanceRow {
   time_out: string | null
   break_minutes: number
   break_started_at: string | null
+  in_distance_m: number | null
+  out_distance_m: number | null
   source: string
   recorded_by: string | null
   created_at: string

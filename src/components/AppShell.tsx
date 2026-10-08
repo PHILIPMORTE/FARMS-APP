@@ -48,6 +48,7 @@ const NAV: Record<Role, NavItem[]> = {
     { to: '/admin/dashboard', label: 'Overview', icon: I('M3 12h6v9H3zM9 3h6v18H9zM15 8h6v13h-6z') },
     { to: '/admin/verifications', label: 'Verify', icon: I('M9 12l2 2 4-4M12 3l7 4v5c0 4.4-3 8.3-7 9.5-4-1.2-7-5.1-7-9.5V7z') },
     { to: '/admin/requests', label: 'Admins', icon: I('M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM19 8v6M22 11h-6') },
+    { to: '/admin/puroks', label: 'Puroks', icon: I('M12 21s7-6.3 7-11a7 7 0 1 0-14 0c0 4.7 7 11 7 11zM12 12.4a2.4 2.4 0 1 0 0-4.8 2.4 2.4 0 0 0 0 4.8z') },
     { to: '/admin/users', label: 'Users', icon: I('M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8') },
     { to: '/admin/catalog', label: 'Products', icon: I('M3 9h18l-1.5 11a2 2 0 0 1-2 2H6.5a2 2 0 0 1-2-2zM8 9V6a4 4 0 0 1 8 0v3') },
     { to: '/admin/orders', label: 'Orders', icon: I('M9 12h6M9 16h6M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z') },
