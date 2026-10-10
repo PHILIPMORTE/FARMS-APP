@@ -7,6 +7,7 @@ import { Badge, DataTable, Dialog, Empty, Spinner, Stat } from '@/components/ui'
 import { ATTENDANCE_LABEL, hours, peso, pesoShort, shortDate,
   toISODate,
   todayISO,
+  refreshBadges,
 } from '@/lib/format'
 import type { AttendanceRow } from '@/lib/types'
 
@@ -39,6 +40,7 @@ export default function FarmerHistory() {
       return
     }
     toast.success('Payment confirmed')
+    refreshBadges()
     setPendingRow(null)
     setReloadKey((k) => k + 1)
   }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
+import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { useNotifications } from '@/context/NotificationsContext'
 import { ROLE_LABEL, initials } from '@/lib/format'
@@ -10,7 +11,8 @@ interface NavItem {
   to: string
   label: string
   icon: JSX.Element
-
+  /** Key in nav_badges() whose count is shown as a red badge on this item. */
+  badge?: string
 }
 
 const I = (d: string) => (
@@ -31,23 +33,23 @@ const I = (d: string) => (
 const NAV: Record<Role, NavItem[]> = {
   owner: [
     { to: '/owner/dashboard', label: 'Home', icon: I('M3 10.5 12 3l9 7.5M5 9.5V21h14V9.5') },
-    { to: '/owner/calendar', label: 'Calendar', icon: I('M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z') },
-    { to: '/owner/market', label: 'Market', icon: I('M3 9h18l-1.5 11a2 2 0 0 1-2 2H6.5a2 2 0 0 1-2-2zM8 9V6a4 4 0 0 1 8 0v3') },
+    { to: '/owner/calendar', label: 'Calendar', badge: 'owner_calendar', icon: I('M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z') },
+    { to: '/owner/market', label: 'Market', badge: 'owner_market', icon: I('M3 9h18l-1.5 11a2 2 0 0 1-2 2H6.5a2 2 0 0 1-2-2zM8 9V6a4 4 0 0 1 8 0v3') },
     { to: '/owner/finance', label: 'Finance', icon: I('M12 2v20M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6') },
-    { to: '/owner/jobs', label: 'Labor', icon: I('M4 7h16a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1zM9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2') },
-    { to: '/owner/attendance', label: 'Work Log', icon: I('M9 11l3 3 5-5M8 2v4M16 2v4M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z') },
-    { to: '/owner/orders', label: 'Orders', icon: I('M9 12h6M9 16h6M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z') },
+    { to: '/owner/jobs', label: 'Labor', badge: 'owner_jobs', icon: I('M4 7h16a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1zM9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2') },
+    { to: '/owner/attendance', label: 'Work Log', badge: 'owner_attendance', icon: I('M9 11l3 3 5-5M8 2v4M16 2v4M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z') },
+    { to: '/owner/orders', label: 'Orders', badge: 'owner_orders', icon: I('M9 12h6M9 16h6M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z') },
   ],
   farmer: [
     { to: '/farmer/jobs', label: 'Find Jobs', icon: I('M4 7h16a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1zM9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2') },
-    { to: '/farmer/applications', label: 'Applications', icon: I('M9 12h6M9 16h6M9 8h2M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z') },
-    { to: '/farmer/logs', label: 'Time Clock', icon: I('M12 7v5l3 2M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z') },
-    { to: '/farmer/history', label: 'My Logs', icon: I('M9 11l3 3 5-5M8 2v4M16 2v4M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z') },
+    { to: '/farmer/applications', label: 'Applications', badge: 'farmer_applications', icon: I('M9 12h6M9 16h6M9 8h2M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z') },
+    { to: '/farmer/logs', label: 'Time Clock', badge: 'farmer_logs', icon: I('M12 7v5l3 2M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z') },
+    { to: '/farmer/history', label: 'My Logs', badge: 'farmer_history', icon: I('M9 11l3 3 5-5M8 2v4M16 2v4M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z') },
   ],
   admin: [
     { to: '/admin/dashboard', label: 'Overview', icon: I('M3 12h6v9H3zM9 3h6v18H9zM15 8h6v13h-6z') },
-    { to: '/admin/verifications', label: 'Verify', icon: I('M9 12l2 2 4-4M12 3l7 4v5c0 4.4-3 8.3-7 9.5-4-1.2-7-5.1-7-9.5V7z') },
-    { to: '/admin/requests', label: 'Admins', icon: I('M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM19 8v6M22 11h-6') },
+    { to: '/admin/verifications', label: 'Verify', badge: 'admin_verifications', icon: I('M9 12l2 2 4-4M12 3l7 4v5c0 4.4-3 8.3-7 9.5-4-1.2-7-5.1-7-9.5V7z') },
+    { to: '/admin/requests', label: 'Admins', badge: 'admin_requests', icon: I('M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM19 8v6M22 11h-6') },
     { to: '/admin/puroks', label: 'Puroks', icon: I('M12 21s7-6.3 7-11a7 7 0 1 0-14 0c0 4.7 7 11 7 11zM12 12.4a2.4 2.4 0 1 0 0-4.8 2.4 2.4 0 0 0 0 4.8z') },
     { to: '/admin/users', label: 'Users', icon: I('M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8') },
     { to: '/admin/catalog', label: 'Products', icon: I('M3 9h18l-1.5 11a2 2 0 0 1-2 2H6.5a2 2 0 0 1-2-2zM8 9V6a4 4 0 0 1 8 0v3') },
@@ -55,11 +57,38 @@ const NAV: Record<Role, NavItem[]> = {
   ],
   buyer: [
     { to: '/buyer/market', label: 'Market', icon: I('M3 9h18l-1.5 11a2 2 0 0 1-2 2H6.5a2 2 0 0 1-2-2zM8 9V6a4 4 0 0 1 8 0v3') },
-    { to: '/buyer/orders', label: 'Orders', icon: I('M9 12h6M9 16h6M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z') },
+    { to: '/buyer/orders', label: 'Orders', badge: 'buyer_orders', icon: I('M9 12h6M9 16h6M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z') },
   ],
 }
 
 export function AppShell({ role }: { role: Role }) {
+  const [badges, setBadges] = useState<Record<string, number>>({})
+
+  const badgeCount = (it: { badge?: string }) =>
+    it.badge ? (badges[it.badge] ?? 0) : 0
+
+  useEffect(() => {
+    let alive = true
+    const load = () =>
+      supabase.rpc('nav_badges').then(({ data }) => {
+        if (alive) setBadges((data as Record<string, number>) ?? {})
+      })
+    load()
+    // refresh on return to the tab, every couple of minutes, and whenever a
+    // page reports that it changed something a badge counts
+    const t = setInterval(load, 120000)
+    const onFocus = () => load()
+    const onChanged = () => load()
+    window.addEventListener('focus', onFocus)
+    window.addEventListener('farms:refresh-badges', onChanged)
+    return () => {
+      alive = false
+      clearInterval(t)
+      window.removeEventListener('focus', onFocus)
+      window.removeEventListener('farms:refresh-badges', onChanged)
+    }
+  }, [role])
+
   const { profile, signOut } = useAuth()
   const { unread } = useNotifications()
   const navigate = useNavigate()
@@ -122,6 +151,15 @@ export function AppShell({ role }: { role: Role }) {
               >
                 <span className="shrink-0">{it.icon}</span>
                 {it.label}
+                {badgeCount(it) > 0 && (
+                  <span
+                    className="ml-0.5 inline-flex min-w-[18px] items-center justify-center rounded-full
+                               bg-red-600 px-1.5 py-0.5 text-[11px] font-bold leading-none text-white"
+                    aria-label={`${badgeCount(it)} needing attention`}
+                  >
+                    {badgeCount(it) > 99 ? '99+' : badgeCount(it)}
+                  </span>
+                )}
               </NavLink>
             ))}
           </nav>
@@ -235,12 +273,21 @@ export function AppShell({ role }: { role: Role }) {
                 key={it.to}
                 to={it.to}
                 className={({ isActive }) =>
-                  `whitespace-nowrap rounded-md px-3 py-1.5 text-[12px] font-semibold transition ${
+                  `inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-[12px] font-semibold transition ${
                     isActive ? 'bg-white/20 text-white' : 'text-white/70'
                   }`
                 }
               >
                 {it.label}
+                {badgeCount(it) > 0 && (
+                  <span
+                    className="inline-flex min-w-[17px] items-center justify-center rounded-full
+                               bg-red-600 px-1 py-0.5 text-[10px] font-bold leading-none text-white"
+                    aria-label={`${badgeCount(it)} needing attention`}
+                  >
+                    {badgeCount(it) > 99 ? '99+' : badgeCount(it)}
+                  </span>
+                )}
               </NavLink>
             ))}
           </div>

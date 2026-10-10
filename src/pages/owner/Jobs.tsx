@@ -15,6 +15,7 @@ import {
 } from '@/components/ui'
 import { CROP_EMOJI, peso, relativeDate, shortDate, titleCase,
   todayISO,
+  refreshBadges,
 } from '@/lib/format'
 import { displayPhone, friendlyError, validateAmount, validateRequired, validateWholeNumber } from '@/lib/validation'
 import type { AppStatus, JobApplication, JobCrop, JobPost, JobType } from '@/lib/types'
@@ -336,6 +337,7 @@ function ApplicationsTab({
       return
     }
     toast.success(decision === 'accepted' ? 'Applicant hired' : 'Application rejected')
+    refreshBadges()
     setRejecting(null)
     setReason('')
     onChanged()

@@ -273,3 +273,9 @@ export function initials(name: string): string {
 export function titleCase(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1)
 }
+
+
+/** Ask the navigation to recount its badges, after an action that changes one. */
+export function refreshBadges() {
+  window.dispatchEvent(new Event('farms:refresh-badges'))
+}

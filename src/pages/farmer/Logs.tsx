@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { PurokMap } from '@/components/PurokMap'
 import { useAuth } from '@/context/AuthContext'
 import { Empty, SectionHeading, Spinner, Stat } from '@/components/ui'
-import { hours, todayISO, peso } from '@/lib/format'
+import { hours, todayISO, peso , refreshBadges } from '@/lib/format'
 import { friendlyError } from '@/lib/validation'
 import type { AttendanceRow } from '@/lib/types'
 
@@ -154,6 +154,7 @@ export default function FarmerLogs() {
 
   useEffect(() => {
     load()
+    refreshBadges()
   }, [load])
 
   useEffect(() => {
