@@ -35,14 +35,14 @@ export function validateName(input: string): string | null {
   return null
 }
 
-export function validateSacks(raw: string | number, opts: { min?: number; max?: number } = {}): string | null {
+export function validateSacks(raw: string | number, opts: { min?: number; max?: number; unit?: 'sack' | 'piece' } = {}): string | null {
   const { min = 1, max } = opts
   const s = String(raw).trim()
-  if (!s) return 'Enter a number of sacks.'
-  if (!/^\d+$/.test(s)) return 'Sacks must be a whole number — no decimals.'
+  if (!s) return `Enter a number of ${(opts.unit ?? 'sack')}s.`
+  if (!/^\d+$/.test(s)) return `${(opts.unit ?? 'sack') === 'piece' ? 'Pieces' : 'Sacks'} must be a whole number — no decimals.`
   const n = parseInt(s, 10)
-  if (n < min) return `Enter at least ${min} sack${min === 1 ? '' : 's'}.`
-  if (max !== undefined && n > max) return `Only ${max} sack${max === 1 ? '' : 's'} available.`
+  if (n < min) return `Enter at least ${min} ${opts.unit ?? 'sack'}${min === 1 ? '' : 's'}.`
+  if (max !== undefined && n > max) return `Only ${max} ${opts.unit ?? 'sack'}${max === 1 ? '' : 's'} available.`
   return null
 }
 

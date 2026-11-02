@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { Empty, SectionHeading, Select, Spinner, Stat } from '@/components/ui'
 import { MyFarmRank, TopFarms } from '@/components/TopFarms'
-import { CROPS, CROP_EMOJI, pesoShort, relativeDate, sacks, titleCase, weightNote } from '@/lib/format'
+import { CROPS, CROP_EMOJI, pesoShort, relativeDate, sacks, titleCase, weightNote, sacksLabel } from '@/lib/format'
 import type { Crop, InventoryItem } from '@/lib/types'
 
 interface Snapshot {
@@ -89,8 +89,8 @@ export default function OwnerDashboard() {
       <div className="stagger grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Revenue" value={pesoShort(data.revenue)} accent="green" sub="All recorded income" />
         <Stat label="Active schedules" value={String(data.schedules)} sub="Planting plans" />
-        <Stat label="Rice stock" value={sacks(data.stock.rice)} sub={weightNote(data.stock.rice)} />
-        <Stat label="Corn stock" value={sacks(data.stock.corn)} sub={weightNote(data.stock.corn)} />
+        <Stat label="Rice stock" value={sacks(data.stock.rice)} sub={weightNote(data.stock.rice, 'rice')} />
+        <Stat label="Corn stock" value={sacks(data.stock.corn)} sub={weightNote(data.stock.corn, 'corn')} />
       </div>
 
       <div className="card flex items-center justify-between gap-4 px-5 py-4">
@@ -119,7 +119,7 @@ export default function OwnerDashboard() {
               <div className="min-w-0">
                 <p className="text-sm font-bold">{titleCase(crop)}</p>
                 <p className="num text-xl font-bold leading-tight">{sacks(data.stock[crop])}</p>
-                <p className="text-[12px] text-soil-400">{weightNote(data.stock[crop])}</p>
+                <p className="text-[12px] text-soil-400">{weightNote(data.stock[crop], crop)}</p>
               </div>
             </div>
           ))}
@@ -164,7 +164,7 @@ export default function OwnerDashboard() {
                   </span>
                 </span>
                 <span className="num shrink-0 text-sm font-bold text-brand-700">
-                  +{sacks(row.quantity)} sacks
+                  +{sacksLabel(row.quantity, row.crop)}
                 </span>
               </li>
             ))}

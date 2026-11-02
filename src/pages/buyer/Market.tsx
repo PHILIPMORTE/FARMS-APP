@@ -16,7 +16,7 @@ import {
 } from '@/components/ui'
 import { TopFarms } from '@/components/TopFarms'
 import { FarmProfileDialog } from '@/components/FarmProfileDialog'
-import { CROPS, CROP_EMOJI, KG_PER_SACK, availableSacks, peso, sacks, titleCase, toSacks } from '@/lib/format'
+import { CROPS, CROP_EMOJI, KG_PER_SACK, canBeMilled, perUnit, unitWord, unitOf, sacksLabel, availableSacks, peso, sacks, titleCase, toSacks } from '@/lib/format'
 import { friendlyError, validateSacks } from '@/lib/validation'
 import type { Product } from '@/lib/types'
 
@@ -117,7 +117,7 @@ export default function BuyerMarket() {
       <div>
         <h1 className="text-[22px] font-bold">Market</h1>
         <p className="mt-0.5 text-[13px] text-soil-600">
-          Fresh from Philippine farms, sold by the sack. One sack is {KG_PER_SACK} kg.
+          Fresh from Philippine farms. Rice is sold by the sack of {KG_PER_SACK} kg; corn and watermelon are sold by the piece.
         </p>
       </div>
 
@@ -202,7 +202,7 @@ export default function BuyerMarket() {
                 ]}
               />
               <PesoInput
-                label="Highest price per sack"
+                label="Highest price (per sack or piece)"
                 placeholder="Any"
                 className="sm:col-span-2"
                 value={maxPrice}
@@ -260,7 +260,7 @@ export default function BuyerMarket() {
             { label: 'Product' },
             { label: 'Farm' },
             { label: 'Available', align: 'right' },
-            { label: 'Price per sack', align: 'right' },
+            { label: 'Price', align: 'right' },
             { label: 'Status' },
             { label: '', align: 'right' },
           ]}
@@ -289,15 +289,22 @@ export default function BuyerMarket() {
                   <span className="text-soil-400">—</span>
                 ) : (
                   <>
-                    <span className="block font-bold">{sacks(availableSacks(p))} sacks</span>
-                    <span className="block text-[12px] text-soil-400">
-                      {availableSacks(p) * KG_PER_SACK} kg
+                    <span className="block font-bold">
+                      {sacksLabel(availableSacks(p), p.crop)}
                     </span>
+                    {unitOf(p.crop) === 'sack' && (
+                      <span className="block text-[12px] text-soil-400">
+                        {availableSacks(p) * KG_PER_SACK} kg
+                      </span>
+                    )}
                   </>
                 )}
               </td>
               <td className="num px-4 py-3 text-right font-bold text-brand-700">
                 {peso(p.price)}
+                <span className="block text-[11px] font-normal text-soil-400">
+                  {perUnit(p.crop)}
+                </span>
               </td>
               <td className="px-4 py-3">
                 <span
@@ -380,11 +387,14 @@ export default function BuyerMarket() {
                   </h2>
 
                   <p className="num text-[17px] font-bold text-brand-700">{peso(p.price)}</p>
-                  <p className="text-[11px] text-soil-400">per sack · {KG_PER_SACK} kg</p>
+                  <p className="text-[11px] text-soil-400">{perUnit(p.crop)}
+                    {unitOf(p.crop) === 'sack' ? ` · ${KG_PER_SACK} kg` : ''}
+                    {canBeMilled(p.crop) ? ` · ${p.form === 'milled' ? 'milled' : 'unmilled'}` : ''}
+                  </p>
 
                   <div className="mt-auto space-y-1 pt-1.5">
                     <p className="num text-[11px] text-soil-600">
-                      {out ? 'No stock' : `${sacks(avail)} sacks available`}
+                      {out ? 'No stock' : `${sacksLabel(avail, p.crop)} available`}
                     </p>
                     <p className="flex items-center gap-0.5 truncate text-[11px] text-soil-400">
                       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
@@ -464,7 +474,11 @@ function BuyDialog({
   const total = valid ? asked * Number(product.price) : 0
 
   async function confirm() {
-    const err = validateSacks(qty, { min: 1, max: availableSacks(product!) })
+    const err = validateSacks(qty, {
+      min: 1,
+      max: availableSacks(product!),
+      unit: unitOf(product!.crop),
+    })
     setError(err)
     if (err) return
 
@@ -480,7 +494,7 @@ function BuyDialog({
       toast.error(friendlyError(rpcError))
       return
     }
-    toast.success(`Ordered ${sacks(qty)} ${toSacks(qty) === 1 ? 'sack' : 'sacks'}`)
+    toast.success(`Ordered ${sacksLabel(qty, product?.crop)}`)
     onBought()
   }
 
@@ -489,7 +503,7 @@ function BuyDialog({
       open
       onClose={onClose}
       title={`Buy ${product.variety}`}
-      description={`${product.farms?.name ?? 'Farm'} · ${peso(product.price)} per sack`}
+      description={`${product.farms?.name ?? 'Farm'} · ${peso(product.price)} ${perUnit(product.crop)}`}
       footer={
         <>
           <button className="btn-ghost" onClick={onClose}>
@@ -506,17 +520,22 @@ function BuyDialog({
         <div className="flex items-center justify-between gap-3 rounded-lg bg-brand-50 px-4 py-3">
           <span className="text-[13px] font-semibold text-brand-900">Available now</span>
           <span className="num text-[15px] font-bold text-brand-900">
-            {sacks(stock)} sacks
+            {sacksLabel(stock, product.crop)}
           </span>
         </div>
 
         <SackInput
-          label="How many sacks"
+          label={unitOf(product.crop) === 'piece' ? 'How many pieces' : 'How many sacks'}
+          unit={unitWord(product.crop, 2)}
           min={1}
           max={stock}
           value={qty}
           error={error}
-          hint={`Up to ${sacks(stock)} · 1 sack = ${KG_PER_SACK} kg`}
+          hint={
+            unitOf(product.crop) === 'sack'
+              ? `Up to ${sacks(stock)} · 1 sack = ${KG_PER_SACK} kg`
+              : `Up to ${sacks(stock)} pieces`
+          }
           onChange={(e) => {
             setQty(e.target.value)
             setError(null)
@@ -526,7 +545,7 @@ function BuyDialog({
         {tooMany && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3">
             <p className="text-[13px] font-bold text-red-800">
-              Only {sacks(stock)} sacks are available
+              Only {sacksLabel(stock, product.crop)} {stock === 1 ? 'is' : 'are'} available
             </p>
             <p className="mt-0.5 text-[13px] leading-relaxed text-red-700">
               You asked for {sacks(asked!)}. Lower your quantity to continue.
@@ -546,15 +565,19 @@ function BuyDialog({
 
         <dl className="space-y-2 rounded-xl bg-soil-50 px-4 py-3.5 text-sm">
           <div className="flex justify-between">
-            <dt className="text-soil-600">Sacks</dt>
+            <dt className="text-soil-600">
+              {unitOf(product.crop) === 'piece' ? 'Pieces' : 'Sacks'}
+            </dt>
             <dd className="num font-semibold">{valid ? sacks(qty) : '—'}</dd>
           </div>
-          <div className="flex justify-between">
-            <dt className="text-soil-600">Total weight</dt>
-            <dd className="num font-semibold">
-              {valid ? `${(toSacks(qty) * KG_PER_SACK).toLocaleString('en-PH')} kg` : '—'}
-            </dd>
-          </div>
+          {unitOf(product.crop) === 'sack' && (
+            <div className="flex justify-between">
+              <dt className="text-soil-600">Total weight</dt>
+              <dd className="num font-semibold">
+                {valid ? `${(toSacks(qty) * KG_PER_SACK).toLocaleString('en-PH')} kg` : '—'}
+              </dd>
+            </div>
+          )}
           <div className="flex justify-between border-t border-soil-200 pt-2">
             <dt className="font-bold">Total price</dt>
             <dd className="num text-base font-bold text-brand-700">{valid ? peso(total) : '—'}</dd>

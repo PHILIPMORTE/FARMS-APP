@@ -231,7 +231,14 @@ interface SackProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'type' |
   hint?: string
 }
 
-export function SackInput({ label, error, hint, className = '', ...props }: SackProps) {
+export function SackInput({
+  label,
+  error,
+  hint,
+  className = '',
+  unit = 'sacks',
+  ...props
+}: SackProps & { unit?: string }) {
   const id = useId()
   return (
     <div className={className}>
@@ -255,7 +262,7 @@ export function SackInput({ label, error, hint, className = '', ...props }: Sack
           {...props}
         />
         <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-sm font-semibold text-soil-400">
-          sacks
+          {unit}
         </span>
       </div>
       {hint && !error && <p className="mt-1.5 text-[13px] text-soil-400">{hint}</p>}

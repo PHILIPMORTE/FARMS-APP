@@ -6,7 +6,7 @@ import { friendlyError } from '@/lib/validation'
 import { useAuth } from '@/context/AuthContext'
 import { DataTable, Dialog, Empty, Search, Spinner, Stat, TextArea, ViewToggle } from '@/components/ui'
 import { OrderTimeline, StageBadge } from '@/components/OrderTimeline'
-import { CROP_EMOJI, effectiveStage, peso, pesoShort, sacks, shortDate, weightNote } from '@/lib/format'
+import { CROP_EMOJI, effectiveStage, peso, pesoShort, sacks, shortDate, weightNote, perUnit, sacksLabel } from '@/lib/format'
 import type { Order, OrderEvent } from '@/lib/types'
 
 export default function BuyerOrders() {
@@ -190,7 +190,7 @@ export default function BuyerOrders() {
             { label: 'Date' },
             { label: 'Product' },
             { label: 'Farm' },
-            { label: 'Sacks', align: 'right' },
+            { label: 'Quantity', align: 'right' },
             { label: 'Total', align: 'right' },
             { label: 'Status' },
           ]}
@@ -201,7 +201,7 @@ export default function BuyerOrders() {
               <td className="num px-4 py-3 text-soil-600">{shortDate(o.created_at)}</td>
               <td className="px-4 py-3 font-semibold">{o.products?.variety ?? 'Product'}</td>
               <td className="px-4 py-3 text-soil-600">{o.products?.farms?.name ?? '—'}</td>
-              <td className="num px-4 py-3 text-right">{sacks(o.quantity)}</td>
+              <td className="num px-4 py-3 text-right">{sacksLabel(o.quantity, o.products?.crop)}</td>
               <td className="num px-4 py-3 text-right font-bold text-brand-700">
                 {peso(o.total_price)}
               </td>
@@ -236,7 +236,7 @@ export default function BuyerOrders() {
                 <dl className="mt-auto space-y-1.5 border-t border-soil-200/70 pt-3 text-sm">
                   <div className="flex justify-between">
                     <dt className="text-soil-600">Quantity</dt>
-                    <dd className="num font-semibold">{sacks(o.quantity)} sacks</dd>
+                    <dd className="num font-semibold">{sacksLabel(o.quantity, o.products?.crop)}</dd>
                   </div>
                   <div className="flex justify-between">
                     <dt className="text-soil-600">Weight</dt>
@@ -244,7 +244,7 @@ export default function BuyerOrders() {
                   </div>
                   {p && (
                     <div className="flex justify-between">
-                      <dt className="text-soil-600">Price per sack</dt>
+                      <dt className="text-soil-600">Price {perUnit(o.products?.crop)}</dt>
                       <dd className="num font-semibold">{peso(p.price)}</dd>
                     </div>
                   )}
@@ -319,7 +319,7 @@ export default function BuyerOrders() {
       >
         <div className="space-y-3">
           <p className="text-[14px] leading-relaxed text-soil-800">
-            The sacks go back on sale and the farm is told. You can only cancel before the farm
+            The stock goes back on sale and the farm is told. You can only cancel before the farm
             starts preparing your order.
           </p>
           <TextArea

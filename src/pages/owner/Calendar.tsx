@@ -15,6 +15,11 @@ import {
   daysBetween,
   peso,
   sacks,
+  plantNoun,
+  pieceNoun,
+  unitWord,
+  sacksLabel,
+  seedLabel,
   shortDate,
   toSacks,
   suggestedCrops,
@@ -128,7 +133,7 @@ export default function OwnerCalendar() {
                   {CROP_EMOJI[r.crop]} {r.variety || titleCase(r.crop)}
                 </span>{' '}
                 is due {shortDate(r.harvest_date)} — about{' '}
-                <span className="num font-semibold">{sacks(r.expected_sacks)}</span> sacks.
+                <span className="num font-semibold">{sacksLabel(r.expected_sacks, r.crop)}</span>.
               </li>
             ))}
           </ul>
@@ -299,7 +304,7 @@ function CalendarView({
                         </span>
                       </span>
                       <span className="num shrink-0 text-[13px] font-bold">
-                        {sacks(r.expected_sacks)} sacks
+                        {sacksLabel(r.expected_sacks, r.crop)}
                       </span>
                     </button>
                   </li>
@@ -443,9 +448,10 @@ function CalendarView({
                       <button
                         key={r.id + 'h'}
                         onClick={() => onOpen(r)}
-                        title={`Expected harvest: ${r.variety || titleCase(r.crop)} — ${sacks(
+                        title={`Expected harvest: ${r.variety || titleCase(r.crop)} — ${sacksLabel(
                           r.expected_sacks,
-                        )} sacks`}
+                          r.crop,
+                        )}`}
                         className={`block truncate rounded px-1.5 py-1 text-left text-[10px] font-semibold ${
                           CROP_COLOR[r.crop].chip
                         }`}
@@ -627,7 +633,7 @@ function TableView({
                           `${row.variety || titleCase(row.crop)} (${titleCase(row.crop)})`,
                           `Planted: ${shortDate(row.planting_date)}`,
                           `Expected harvest: ${shortDate(row.harvest_date)}`,
-                          `Expected sacks: ${sacks(row.expected_sacks)}`,
+                          `Expected ${unitWord(row.crop, 2)}: ${sacks(row.expected_sacks)}`,
                           done
                             ? 'Harvested'
                             : `${pct}% grown - day ${elapsed} of ${total}, ${left} days left`,
@@ -657,7 +663,7 @@ function TableView({
                             }`}
                           >
                             {done
-                              ? `Harvested · ${sacks(row.actual_sacks ?? 0)} sacks`
+                              ? `Harvested · ${sacksLabel(row.actual_sacks ?? 0, row.crop)}`
                               : `${pct}%`}
                           </span>
 
@@ -738,6 +744,13 @@ function AddPlantingDialog({
   const [estimate, setEstimate] = useState<{
     expected_sacks: number
     expected_kg: number
+    unit?: 'sack' | 'piece'
+    plants?: number
+    hills?: number
+    seeds?: number
+    fruits_per_plant?: number
+    marketable_fraction?: number
+    avg_fruit_kg?: number
     days_to_harvest: number
   } | null>(null)
   const [land, setLand] = useState<{
@@ -756,9 +769,14 @@ function AddPlantingDialog({
   const chosenVariety =
     form.variety === '__other' ? form.customVariety.trim() : form.variety.trim()
 
+  // Watermelon seed is bought and sown by the gram; rice and corn by the kilogram.
+  const isMelon = form.crop === 'watermelon'
+  const inPieces = form.crop !== 'rice'
+  const seedKg = isMelon ? Number(form.seed_kg || 0) / 1000 : Number(form.seed_kg || 0)
+
   useEffect(() => {
     if (!open) return
-    const seed = Number(form.seed_kg || 0)
+    const seed = seedKg
     if (seed <= 0) {
       setEstimate(null)
       return
@@ -784,15 +802,6 @@ function AddPlantingDialog({
         if (alive) setEstimate(data as any)
       })
 
-    supabase
-      .rpc('land_needed', {
-        p_crop: form.crop,
-        p_variety: chosenVariety,
-        p_seed_kg: seed,
-      })
-      .then(({ data }) => {
-        if (alive) setLand(data as any)
-      })
     return () => {
       alive = false
     }
@@ -830,7 +839,12 @@ function AddPlantingDialog({
         form.variety === '__other'
           ? validateRequired(form.customVariety, 'Variety name')
           : null,
-      seed_kg: Number(form.seed_kg) > 0 ? null : 'Enter the seed weight in kilograms.',
+      seed_kg:
+        Number(form.seed_kg) > 0
+          ? null
+          : isMelon
+            ? 'Enter the seed weight in grams.'
+            : 'Enter the seed weight in kilograms.',
       purok_id: form.purok_id ? null : 'Choose the purok where the farm is located.',
     }
     setErrors(next)
@@ -842,7 +856,7 @@ function AddPlantingDialog({
       p_crop: form.crop,
       p_variety: chosenVariety,
       p_planting_date: plantingDate,
-      p_seed_kg: Number(form.seed_kg),
+      p_seed_kg: seedKg,
       p_note: form.note.trim(),
     })
     setBusy(false)
@@ -855,7 +869,7 @@ function AddPlantingDialog({
     const result = data as { merged?: boolean; seed_kg?: number } | null
     toast.success(
       result?.merged
-        ? `Merged into your existing ${chosenVariety} planting — now ${result.seed_kg} kg of seed`
+        ? `Merged into your existing ${chosenVariety} planting — now ${seedLabel(Number(result.seed_kg), form.crop)} of seed`
         : plantingDate > today
           ? 'Planting scheduled'
           : 'Planting added to your calendar',
@@ -959,9 +973,12 @@ function AddPlantingDialog({
             </p>
             <p className="mt-0.5 text-[13px] leading-relaxed text-amber-800">
               This seed is added to that planting, taking it from{' '}
-              <span className="num font-semibold">{mergeInto.seed_kg} kg</span> to{' '}
               <span className="num font-semibold">
-                {Number(mergeInto.seed_kg) + Number(form.seed_kg || 0)} kg
+                {seedLabel(Number(mergeInto.seed_kg), form.crop)}
+              </span>{' '}
+              to{' '}
+              <span className="num font-semibold">
+                {seedLabel(Number(mergeInto.seed_kg) + seedKg, form.crop)}
               </span>
               . No second entry or progress bar is created.
             </p>
@@ -988,12 +1005,12 @@ function AddPlantingDialog({
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Field
-            label="Seed used (kg)"
+            label={isMelon ? 'Seed used (grams)' : 'Seed used (kg)'}
             type="number"
             min="0"
-            step="0.5"
+            step={isMelon ? '10' : '0.5'}
             inputMode="decimal"
-            placeholder="e.g. 40"
+            placeholder={isMelon ? 'e.g. 500' : 'e.g. 40'}
             value={form.seed_kg}
             error={errors.seed_kg}
             onChange={(e) => set('seed_kg', e.target.value)}
@@ -1022,13 +1039,24 @@ function AddPlantingDialog({
               </p>
             </div>
 
-            <dl className="mt-3 grid grid-cols-2 gap-3">
+            <dl className={`mt-3 grid gap-3 ${inPieces ? 'grid-cols-3' : 'grid-cols-2'}`}>
+              {inPieces && (
+                <div className="rounded-lg bg-white/70 px-3 py-2.5 text-center">
+                  <dt className="text-[11px] font-semibold uppercase tracking-wide text-brand-900/70">
+                    {plantNoun(form.crop)}s
+                  </dt>
+                  <dd className="num text-[19px] font-bold text-brand-900">
+                    {Number(estimate.plants ?? 0).toLocaleString('en-PH')}
+                  </dd>
+                </div>
+              )}
               <div className="rounded-lg bg-white/70 px-3 py-2.5 text-center">
                 <dt className="text-[11px] font-semibold uppercase tracking-wide text-brand-900/70">
-                  Sacks
+                  {inPieces ? `${pieceNoun(form.crop)}s` : 'Sacks'}
                 </dt>
                 <dd className="num text-[19px] font-bold text-brand-900">
                   {sacks(estimate.expected_sacks)}
+                  {inPieces && <span className="ml-1 text-[12px] font-semibold">pcs</span>}
                 </dd>
               </div>
               <div className="rounded-lg bg-white/70 px-3 py-2.5 text-center">
@@ -1036,10 +1064,20 @@ function AddPlantingDialog({
                   Weight
                 </dt>
                 <dd className="num text-[19px] font-bold text-brand-900">
-                  {Math.round(estimate.expected_kg)} kg
+                  {Math.round(estimate.expected_kg).toLocaleString('en-PH')} kg
                 </dd>
               </div>
             </dl>
+
+            {inPieces && (
+              <p className="mt-2 text-[11px] leading-relaxed text-brand-900/60">
+                Each {plantNoun(form.crop)} is expected to bear about {estimate.fruits_per_plant}{' '}
+                {pieceNoun(form.crop)}
+                {Number(estimate.fruits_per_plant) === 1 ? '' : 's'}, of which{' '}
+                {Math.round(Number(estimate.marketable_fraction ?? 0.8) * 100)}% are marketable, at
+                about {estimate.avg_fruit_kg} kg each.
+              </p>
+            )}
 
             {land && land.hectares > 0 && (
               <div className="mt-3 rounded-lg bg-white/70 px-4 py-3 text-center">
@@ -1050,7 +1088,8 @@ function AddPlantingDialog({
                   {Math.round(land.sqm).toLocaleString()} m²
                 </p>
                 <p className="mt-0.5 text-[11px] text-brand-900/60">
-                  {land.kg_per_hectare} kg of seed covers 10,000 m² of {titleCase(form.crop)}
+                  {(land as any).caption ??
+                    `${land.kg_per_hectare} kg of seed covers 10,000 m² of ${titleCase(form.crop)}`}
                 </p>
               </div>
             )}
@@ -1089,6 +1128,19 @@ function DetailDialog({
   const [amount, setAmount] = useState('')
   const [spent, setSpent] = useState(0)
   const [busy, setBusy] = useState(false)
+  const [modelKg, setModelKg] = useState<number | null>(null)
+
+  useEffect(() => {
+    setModelKg(null)
+    if (!schedule || schedule.crop === 'rice') return
+    supabase
+      .rpc('estimate_harvest', {
+        p_crop: schedule.crop,
+        p_variety: schedule.variety ?? '',
+        p_seed_kg: Number(schedule.seed_kg),
+      })
+      .then(({ data }) => setModelKg(Number((data as any)?.expected_kg ?? 0)))
+  }, [schedule?.id])
 
   useEffect(() => {
     if (!schedule) return
@@ -1204,12 +1256,28 @@ function DetailDialog({
                 }
               />
               <Row label="Purok" value={schedule.field_name || '—'} />
-              <Row label="Seed used" value={`${schedule.seed_kg} kg`} />
-              <Row label="Expected sacks" value={`${sacks(schedule.expected_sacks)} sacks`} />
-              <Row label="Expected weight" value={`${schedule.expected_sacks * 25} kg`} />
+              <Row label="Seed used" value={seedLabel(Number(schedule.seed_kg), schedule.crop)} />
+              <Row
+                label={
+                  schedule.crop === 'rice'
+                    ? 'Expected sacks'
+                    : `Expected ${pieceNoun(schedule.crop)}s`
+                }
+                value={sacksLabel(schedule.expected_sacks, schedule.crop)}
+              />
+              <Row
+                label="Expected weight"
+                value={
+                  schedule.crop !== 'rice'
+                    ? modelKg == null
+                      ? '…'
+                      : `${Math.round(modelKg).toLocaleString('en-PH')} kg`
+                    : `${schedule.expected_sacks * 25} kg`
+                }
+              />
               {schedule.actual_sacks != null && (
                 <>
-                  <Row label="Actual harvest" value={`${sacks(schedule.actual_sacks)} sacks`} />
+                  <Row label="Actual harvest" value={sacksLabel(schedule.actual_sacks, schedule.crop)} />
                   <Row
                     label="Harvested on"
                     value={shortDate(schedule.harvested_at ?? schedule.harvest_date)}
@@ -1295,10 +1363,15 @@ function DetailDialog({
             Enter what you actually harvested.
           </p>
           <SackInput
-            label="Exact sacks harvested"
+            label={
+              schedule.crop === 'rice'
+                ? 'Exact sacks harvested'
+                : `Exact ${pieceNoun(schedule.crop)}s harvested`
+            }
+            unit={unitWord(schedule.crop, 2)}
             min={0}
             value={actual}
-            hint={`Estimate was ${sacks(schedule.expected_sacks)} sacks — enter what you really got`}
+            hint={`Estimate was ${sacksLabel(schedule.expected_sacks, schedule.crop)} — enter what you really got`}
             onChange={(e) => setActual(e.target.value)}
           />
 
@@ -1306,11 +1379,11 @@ function DetailDialog({
             <dl className="space-y-1 rounded-lg bg-soil-50 px-3.5 py-2.5 text-[13px]">
               <div className="flex justify-between gap-3">
                 <dt className="text-soil-600">Estimated</dt>
-                <dd className="num">{sacks(schedule.expected_sacks)} sacks</dd>
+                <dd className="num">{sacksLabel(schedule.expected_sacks, schedule.crop)}</dd>
               </div>
               <div className="flex justify-between gap-3 border-t border-soil-200 pt-1">
                 <dt className="font-semibold">Actual harvest</dt>
-                <dd className="num font-bold text-brand-700">{sacks(actual)} sacks</dd>
+                <dd className="num font-bold text-brand-700">{sacksLabel(actual, schedule.crop)}</dd>
               </div>
               <div className="flex justify-between gap-3">
                 <dt className="text-soil-600">Difference</dt>
@@ -1320,7 +1393,7 @@ function DetailDialog({
                   }`}
                 >
                   {toSacks(actual) - schedule.expected_sacks > 0 ? '+' : ''}
-                  {toSacks(actual) - schedule.expected_sacks} sacks
+                  {toSacks(actual) - schedule.expected_sacks} {unitWord(schedule.crop, 2)}
                 </dd>
               </div>
             </dl>

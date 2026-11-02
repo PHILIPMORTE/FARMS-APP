@@ -26,6 +26,7 @@ import {
   peso,
   pesoShort,
   sacks,
+  sacksLabel,
   shortDate,
   stageIndex,
 } from '@/lib/format'
@@ -260,7 +261,7 @@ export default function OwnerOrders() {
                       { label: 'Date' },
                       { label: 'Product' },
                       { label: 'Buyer' },
-                      { label: 'Sacks', align: 'right' },
+                      { label: 'Quantity', align: 'right' },
                       { label: 'Total', align: 'right' },
                       { label: 'Stage' },
                       { label: 'Payment' },
@@ -311,7 +312,7 @@ export default function OwnerOrders() {
                             )}
                           </td>
                           <td className="num px-4 py-3 text-right font-bold">
-                            {sacks(o.quantity)}
+                            {sacksLabel(o.quantity, o.products?.crop)}
                           </td>
                           <td className="num px-4 py-3 text-right font-bold text-brand-700">
                             {peso(o.total_price)}
@@ -394,7 +395,7 @@ export default function OwnerOrders() {
                 <dl className="space-y-1 text-[13px]">
                   <div className="flex justify-between">
                     <dt className="text-soil-600">Quantity</dt>
-                    <dd className="num font-semibold">{sacks(o.quantity)} sacks</dd>
+                    <dd className="num font-semibold">{sacksLabel(o.quantity, o.products?.crop)}</dd>
                   </div>
                   <div className="flex justify-between border-t border-soil-200 pt-1">
                     <dt className="font-bold">Total</dt>
@@ -525,7 +526,7 @@ function StageDialog({
       <div className="space-y-3">
         {cancelling ? (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] leading-relaxed text-amber-900">
-            The {sacks(acting.order.quantity)} sacks go back into your stock, and a refund entry is
+            The {sacksLabel(acting.order.quantity, acting.order.products?.crop)} go back into your stock, and a refund entry is
             added to your books so Finance stays accurate.
           </div>
         ) : (

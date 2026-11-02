@@ -431,7 +431,7 @@ export function AdminOrders() {
                 <th className="px-4 py-2.5 font-semibold">Product</th>
                 <th className="px-4 py-2.5 font-semibold">Farm</th>
                 <th className="px-4 py-2.5 font-semibold">Buyer</th>
-                <th className="px-4 py-2.5 text-right font-semibold">Sacks</th>
+                <th className="px-4 py-2.5 text-right font-semibold">Quantity</th>
                 <th className="px-4 py-2.5 text-right font-semibold">Total</th>
                 <th className="px-4 py-2.5 font-semibold">Stage</th>
               </tr>

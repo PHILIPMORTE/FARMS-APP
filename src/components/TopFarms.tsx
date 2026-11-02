@@ -139,7 +139,7 @@ export function TopFarms({
                     {peso(r.total_sales)}
                   </span>
                   <span className="num block text-[11px] text-soil-400">
-                    {sacks(r.sacks_sold)} sacks · {r.order_count}{' '}
+                    {sacks(r.sacks_sold)} items · {r.order_count}{' '}
                     {Number(r.order_count) === 1 ? 'order' : 'orders'}
                   </span>
                 </span>
@@ -178,7 +178,7 @@ export function MyFarmRank({ days = 7 }: { days?: number }) {
         </p>
         <p className="num mt-0.5 text-[22px] font-bold text-brand-700">{peso(data.sales)}</p>
         <p className="text-[12px] text-soil-400">
-          {sacks(data.sacks)} sacks across {data.orders} {data.orders === 1 ? 'order' : 'orders'}
+          {sacks(data.sacks)} items across {data.orders} {data.orders === 1 ? 'order' : 'orders'}
         </p>
       </div>
 

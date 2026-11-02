@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { RatingBadge } from '@/components/Ratings'
-import { initials, peso, sacks, shortDate } from '@/lib/format'
+import { initials, peso, sacks, sacksLabel, shortDate } from '@/lib/format'
 import { displayPhone } from '@/lib/validation'
 import type { Profile } from '@/lib/types'
 
 export function BuyerContactCard({ buyer }: { buyer: Profile | null | undefined }) {
   const [mapOpen, setMapOpen] = useState(false)
   const [history, setHistory] = useState<
-    { id: string; quantity: number; total_price: number; created_at: string; variety: string }[] | null
+    { id: string; quantity: number; total_price: number; created_at: string; variety: string; crop: string }[] | null
   >(null)
   const [historyOpen, setHistoryOpen] = useState(false)
 
@@ -16,7 +16,7 @@ export function BuyerContactCard({ buyer }: { buyer: Profile | null | undefined 
     if (!historyOpen || history || !buyer) return
     supabase
       .from('orders')
-      .select('id, quantity, total_price, created_at, products(variety)')
+      .select('id, quantity, total_price, created_at, products(variety, crop)')
       .eq('buyer_id', buyer.id)
       .order('created_at', { ascending: false })
       .limit(10)
@@ -28,6 +28,7 @@ export function BuyerContactCard({ buyer }: { buyer: Profile | null | undefined 
             total_price: o.total_price,
             created_at: o.created_at,
             variety: o.products?.variety ?? 'Product',
+            crop: o.products?.crop ?? 'rice',
           })),
         ),
       )
@@ -115,7 +116,7 @@ export function BuyerContactCard({ buyer }: { buyer: Profile | null | undefined 
                     </span>
                   </span>
                   <span className="num shrink-0 text-right text-[12px]">
-                    <span className="block font-semibold">{sacks(h.quantity)} sacks</span>
+                    <span className="block font-semibold">{sacksLabel(h.quantity, h.crop)}</span>
                     <span className="block text-brand-700">{peso(h.total_price)}</span>
                   </span>
                 </li>

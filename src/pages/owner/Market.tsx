@@ -26,6 +26,11 @@ import {
   effectiveStage,
   isFinishedOrder,
   sacks,
+  canBeMilled,
+  perUnit,
+  unitWord,
+  unitOf,
+  sacksLabel,
   shortDate,
   titleCase,
 } from '@/lib/format'
@@ -167,7 +172,7 @@ export default function OwnerMarket() {
           body={
             query
               ? 'Try the variety name, or a crop like rice, corn or watermelon.'
-              : 'Add your harvest as a listing and buyers can order it by the sack.'
+              : 'Add your harvest as a listing and buyers can order it by the sack or the piece.'
           }
           action={
             !query && (
@@ -213,17 +218,19 @@ export default function OwnerMarket() {
                   <h3 className="line-clamp-2 text-[13px] font-semibold leading-snug">
                     {p.variety}
                   </h3>
-                  <span
-                    className={`chip mt-0.5 ${
-                      p.form === 'milled'
-                        ? 'bg-brand-100 text-brand-800'
-                        : 'bg-soil-100 text-soil-700'
-                    }`}
-                  >
-                    {p.form === 'milled' ? 'Milled' : 'Unmilled'}
-                  </span>
+                  {canBeMilled(p.crop) && (
+                    <span
+                      className={`chip mt-0.5 ${
+                        p.form === 'milled'
+                          ? 'bg-brand-100 text-brand-800'
+                          : 'bg-soil-100 text-soil-700'
+                      }`}
+                    >
+                      {p.form === 'milled' ? 'Milled' : 'Unmilled'}
+                    </span>
+                  )}
                   <p className="num text-[17px] font-bold text-brand-700">{peso(p.price)}</p>
-                  <p className="text-[11px] text-soil-400">per sack · {titleCase(p.crop)}</p>
+                  <p className="text-[11px] text-soil-400">{perUnit(p.crop)} · {titleCase(p.crop)}</p>
 
                   <dl className="mt-1.5 space-y-0.5 border-t border-soil-200 pt-1.5 text-[11px]">
                     <div className="flex justify-between">
@@ -280,7 +287,7 @@ export default function OwnerMarket() {
               { label: 'Date' },
               { label: 'Product' },
               { label: 'Buyer' },
-              { label: 'Sacks', align: 'right' },
+              { label: 'Quantity', align: 'right' },
               { label: 'Total', align: 'right' },
               { label: 'Stage' },
               { label: 'Payment' },
@@ -314,7 +321,9 @@ export default function OwnerMarket() {
                       'No address given'}
                   </span>
                 </td>
-                <td className="num px-4 py-3 text-right font-bold">{sacks(o.quantity)}</td>
+                <td className="num px-4 py-3 text-right font-bold">
+                  {sacksLabel(o.quantity, o.products?.crop)}
+                </td>
                 <td className="num px-4 py-3 text-right font-bold text-brand-700">
                   {peso(o.total_price)}
                 </td>
@@ -373,7 +382,7 @@ export default function OwnerMarket() {
               { label: 'Date' },
               { label: 'Product' },
               { label: 'Buyer' },
-              { label: 'Sacks', align: 'right' },
+              { label: 'Quantity', align: 'right' },
               { label: 'Total', align: 'right' },
               { label: 'Result' },
             ]}
@@ -401,7 +410,9 @@ export default function OwnerMarket() {
                     '—'
                   )}
                 </td>
-                <td className="num px-4 py-3 text-right">{sacks(o.quantity)}</td>
+                <td className="num px-4 py-3 text-right">
+                  {sacksLabel(o.quantity, o.products?.crop)}
+                </td>
                 <td className="num px-4 py-3 text-right font-semibold">{peso(o.total_price)}</td>
                 <td className="px-4 py-3">
                   <StageBadge stage={effectiveStage(o)} />
@@ -498,7 +509,18 @@ function AddProductDialog({
   const [busy, setBusy] = useState(false)
 
   const set = (k: string, v: string) => {
-    setForm((f) => ({ ...f, [k]: v }))
+    setForm((f) => {
+      const next = { ...f, [k]: v }
+      // Changing the crop clears what belonged to the old one. Milling is for
+      // rice only, so any other crop goes back to being sold as harvested.
+      if (k === 'crop') {
+        next.variety = ''
+        next.customVariety = ''
+        next.quantity = ''
+        if (v !== 'rice') next.form = 'unmilled'
+      }
+      return next
+    })
     setErrors((e) => ({ ...e, [k]: null }))
   }
 
@@ -509,7 +531,11 @@ function AddProductDialog({
     label: h.variety,
   }))
 
-  const isMilled = form.form === 'milled'
+  // Milling applies to rice only; corn and watermelon are always sold as harvested.
+  const isRice = canBeMilled(form.crop)
+  const isMilled = isRice && form.form === 'milled'
+  const unit = unitOf(form.crop)
+  const unitPlural = unitWord(form.crop, 2)
 
   const chosenVariety =
     form.variety === '__other' ? form.customVariety.trim() : form.variety.trim()
@@ -552,6 +578,7 @@ function AddProductDialog({
       customVariety:
         form.variety === '__other' ? validateRequired(form.customVariety, 'Variety name') : null,
       quantity: validateSacks(form.quantity, {
+        unit,
         min: 1,
         ...(maxSacks !== null ? { max: maxSacks } : {}),
       }),
@@ -587,7 +614,7 @@ function AddProductDialog({
       p_crop: form.crop,
       p_quantity: parseInt(form.quantity, 10),
       p_price: Number(form.price),
-      p_form: form.form,
+      p_form: isRice ? form.form : 'unmilled',
     })
     setBusy(false)
 
@@ -626,7 +653,7 @@ function AddProductDialog({
       open={open}
       onClose={onClose}
       title="Add a product"
-      description="Buyers order by the sack."
+      description={`Buyers order by the ${unit}.`}
       footer={
         <>
           <button type="button" className="btn-ghost" onClick={onClose}>
@@ -665,6 +692,7 @@ function AddProductDialog({
           </div>
         )}
 
+        {isRice && (
         <div>
           <label className="label">How is it being sold?</label>
           <div className="grid grid-cols-2 gap-2">
@@ -692,6 +720,7 @@ function AddProductDialog({
             ))}
           </div>
         </div>
+        )}
 
         {form.variety === '__other' && isMilled && (
           <Field
@@ -735,7 +764,8 @@ function AddProductDialog({
 
         <div>
           <SackInput
-            label="Number of sacks"
+            label={unit === 'piece' ? 'Number of pieces' : 'Number of sacks'}
+            unit={unitPlural}
             placeholder="0"
             max={maxSacks ?? undefined}
             value={form.quantity}
@@ -750,24 +780,24 @@ function AddProductDialog({
                   Harvested {shortDate(matchedHarvest.harvested_at ?? matchedHarvest.harvest_date)}
                 </dt>
                 <dd className="num font-semibold">
-                  {sacks(matchedHarvest.actual_sacks ?? 0)} sacks
+                  {sacks(matchedHarvest.actual_sacks ?? 0)} {unitPlural}
                 </dd>
               </div>
               {alreadyListed > 0 && (
                 <div className="flex justify-between gap-3">
                   <dt className="text-soil-600">Already listed</dt>
-                  <dd className="num font-semibold">{sacks(alreadyListed)} sacks</dd>
+                  <dd className="num font-semibold">{sacks(alreadyListed)} {unitPlural}</dd>
                 </div>
               )}
               <div className="flex justify-between gap-3 border-t border-soil-200 pt-1">
                 <dt className="font-semibold">Most you can sell</dt>
-                <dd className="num font-bold text-brand-700">{sacks(maxSacks ?? 0)} sacks</dd>
+                <dd className="num font-bold text-brand-700">{sacks(maxSacks ?? 0)} {unitPlural}</dd>
               </div>
             </dl>
           )}
         </div>
         <PesoInput
-          label="Price per sack"
+          label={`Price per ${unit}`}
           placeholder="0.00"
           value={form.price}
           error={errors.price}
@@ -830,12 +860,12 @@ function AddProductDialog({
               You already list {existing.variety}
             </p>
             <p className="mt-0.5 text-[13px] leading-relaxed text-amber-800">
-              These sacks will be added to that listing, taking it from{' '}
+              These {unitPlural} will be added to that listing, taking it from{' '}
               <span className="num font-semibold">{sacks(existing.quantity)}</span> to{' '}
               <span className="num font-semibold">
                 {sacks(existing.quantity + (parseInt(form.quantity || '0', 10) || 0))}
               </span>{' '}
-              sacks, rather than creating a second entry.
+              {unitPlural}, rather than creating a second entry.
             </p>
           </div>
         )}
@@ -899,11 +929,11 @@ function EditStockDialog({
     (next === 0 || Math.abs(diff) >= Math.max(10, Math.ceil(product.quantity / 2)))
 
   async function save() {
-    const err = validateSacks(qty, { min: 0 })
+    const err = validateSacks(qty, { min: 0, unit: unitOf(product?.crop) })
     setError(err)
     if (err) return
     if (newPrice === '' || Number(newPrice) < 0) {
-      toast.error('Enter a valid price per sack.')
+      toast.error(`Enter a valid price per ${unitOf(product?.crop)}.`)
       return
     }
 
@@ -934,7 +964,7 @@ function EditStockDialog({
       open
       onClose={onClose}
       title={`Edit listing — ${product.variety}`}
-      description={`${sacks(product.quantity)} sacks at ${peso(product.price)} each`}
+      description={`${sacksLabel(product.quantity, product.crop)} at ${peso(product.price)} each`}
       footer={
         <>
           <button
@@ -957,12 +987,13 @@ function EditStockDialog({
       <div className="space-y-4">
         <SackInput
           label="New stock level"
+          unit={unitWord(product.crop, 2)}
           min={0}
           value={qty}
           error={error}
           hint={
             product.reserved > 0
-              ? `${sacks(product.reserved)} sack(s) are reserved by open orders.`
+              ? `${sacksLabel(product.reserved, product.crop)} reserved by open orders.`
               : 'Set to 0 to mark this product out of stock.'
           }
           onChange={(e) => {
@@ -973,7 +1004,7 @@ function EditStockDialog({
         />
 
         <PesoInput
-          label="Price per sack"
+          label={`Price per ${unitOf(product.crop)}`}
           placeholder="0.00"
           value={newPrice}
           hint={
@@ -997,7 +1028,7 @@ function EditStockDialog({
               <dt className="text-soil-600">Change</dt>
               <dd className={`num font-bold ${diff > 0 ? 'text-green-700' : 'text-red-600'}`}>
                 {diff > 0 ? '+' : ''}
-                {sacks(Math.abs(diff))} sacks
+                {sacksLabel(Math.abs(diff), product.crop)}
               </dd>
             </div>
             <div className="flex justify-between">
@@ -1021,7 +1052,7 @@ function EditStockDialog({
             <p className="mt-1 text-[13px] leading-relaxed text-amber-800">
               {next === 0
                 ? 'Buyers will see it as out of stock and cannot order it until you restock.'
-                : `Stock goes from ${sacks(product.quantity)} to ${sacks(next!)} sacks. Check the number before saving.`}
+                : `Stock goes from ${sacks(product.quantity)} to ${sacksLabel(next!, product.crop)}. Check the number before saving.`}
             </p>
           </div>
         )}

@@ -201,15 +201,46 @@ export function sacks(value: unknown): string {
   return toSacks(value).toLocaleString('en-PH', { maximumFractionDigits: 0 })
 }
 
-export function sacksLabel(value: unknown): string {
-  const n = toSacks(value)
-  return `${sacks(n)} ${n === 1 ? 'sack' : 'sacks'}`
+/** Rice and corn are counted in sacks; a watermelon is counted in pieces. */
+export type Unit = 'sack' | 'piece'
+
+// Only rice is counted in sacks. Corn is counted in ears and watermelon in fruit,
+// both of which are pieces.
+export const unitOf = (crop?: string | null): Unit => (crop === 'rice' ? 'sack' : 'piece')
+
+/** What one piece of the crop is called: an ear of corn, a watermelon. */
+export const pieceNoun = (crop?: string | null): string =>
+  crop === 'corn' ? 'ear' : crop === 'watermelon' ? 'fruit' : 'piece'
+
+/** What the growing plant is called. */
+export const plantNoun = (crop?: string | null): string => (crop === 'watermelon' ? 'vine' : 'plant')
+
+export function unitWord(crop?: string | null, n: number = 2): string {
+  const u = unitOf(crop)
+  return n === 1 ? u : `${u}s`
 }
 
-export function weightNote(value: unknown): string {
+/** "3 sacks", "1 piece" */
+export function sacksLabel(value: unknown, crop?: string | null): string {
   const n = toSacks(value)
-  return `${sacks(n)} ${n === 1 ? 'sack' : 'sacks'} = ${(n * KG_PER_SACK).toLocaleString('en-PH')} kg`
+  return `${sacks(n)} ${unitWord(crop, n)}`
 }
+
+/**
+ * For a sack, the weight it stands for. A piece of watermelon has no fixed
+ * weight (it depends on the variety), so only the count is shown.
+ */
+export function weightNote(value: unknown, crop?: string | null): string {
+  const n = toSacks(value)
+  if (unitOf(crop) === 'piece') return `${sacks(n)} ${unitWord(crop, n)}`
+  return `${sacks(n)} ${unitWord(crop, n)} = ${(n * KG_PER_SACK).toLocaleString('en-PH')} kg`
+}
+
+/** "per sack" / "per piece", for prices. */
+export const perUnit = (crop?: string | null) => `per ${unitOf(crop)}`
+
+/** Whether milling is offered. Only rice is milled. */
+export const canBeMilled = (crop?: string | null) => crop === 'rice'
 
 export function peso(value: number | string | null | undefined): string {
   const n = Number(value ?? 0)
@@ -278,4 +309,12 @@ export function titleCase(s: string): string {
 /** Ask the navigation to recount its badges, after an action that changes one. */
 export function refreshBadges() {
   window.dispatchEvent(new Event('farms:refresh-badges'))
+}
+
+
+/** Seed is weighed in grams for watermelon and in kilograms for rice and corn. */
+export function seedLabel(kg: number, crop?: string | null): string {
+  const n = Number.isFinite(kg) ? kg : 0
+  if (crop === 'watermelon') return `${Math.round(n * 1000).toLocaleString('en-PH')} g`
+  return `${Number(n.toFixed(2)).toLocaleString('en-PH')} kg`
 }

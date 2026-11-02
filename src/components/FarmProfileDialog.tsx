@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Dialog, Empty, Spinner } from '@/components/ui'
 import { RatingBadge } from '@/components/Ratings'
-import { CROP_COLOR, CROP_EMOJI, availableSacks, peso, sacks, titleCase } from '@/lib/format'
+import { CROP_COLOR, CROP_EMOJI, availableSacks, peso, sacks, sacksLabel, titleCase } from '@/lib/format'
 import type { Crop } from '@/lib/types'
 
 interface FarmProduct {
@@ -137,7 +137,7 @@ export function FarmProfileDialog({
                       </span>
                     </span>
                     <span className="num shrink-0 text-right text-[12px] text-amber-900">
-                      <span className="block font-bold">{sacks(b.sacks_sold)} sacks</span>
+                      <span className="block font-bold">{sacksLabel(b.sacks_sold, b.crop)}</span>
                       <span className="block">
                         {b.orders} order{b.orders === 1 ? '' : 's'}
                       </span>
@@ -196,7 +196,7 @@ export function FarmProfileDialog({
                         <p className="truncate text-[13px] font-semibold">{p.variety}</p>
                         <p className="num text-[15px] font-bold text-brand-700">{peso(p.price)}</p>
                         <p className="num text-[11px] text-soil-500">
-                          {avail === 0 ? 'None left' : `${sacks(avail)} sacks available`}
+                          {avail === 0 ? 'None left' : `${sacksLabel(avail, p.crop)} available`}
                         </p>
                       </div>
                     </li>
@@ -209,7 +209,7 @@ export function FarmProfileDialog({
           {data.total_sold > 0 && (
             <p className="rounded-lg bg-soil-50 px-4 py-3 text-center text-[13px] text-soil-600">
               This farm has sold{' '}
-              <span className="num font-bold text-soil-900">{sacks(data.total_sold)} sacks</span> in
+              <span className="num font-bold text-soil-900">{sacks(data.total_sold)} items</span> in
               completed orders.
             </p>
           )}
