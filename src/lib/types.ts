@@ -159,6 +159,8 @@ export interface Product {
   reserved: number
   form: 'unmilled' | 'milled'
   price: number
+  pay_cash: boolean
+  pay_gcash: boolean
   status: ProductStatus
   buyer_id: string | null
   created_at: string
@@ -189,6 +191,9 @@ export interface Order {
   stage: OrderStage
   paid: boolean
   paid_at: string | null
+  payment_method: 'cash' | 'gcash'
+  gcash_reference: string | null
+  gcash_reference_at: string | null
   cancel_reason: string | null
   updated_at: string
   created_at: string

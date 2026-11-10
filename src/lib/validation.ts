@@ -78,3 +78,28 @@ export function friendlyError(error: unknown): string {
   if (/Password should be/i.test(msg)) return 'Use at least 8 characters.'
   return msg || 'Something went wrong. Try again.'
 }
+
+
+/** A Philippine mobile number: 09XXXXXXXXX, or the +63 / 63 form. */
+export function normaliseGcashNumber(raw: string): string {
+  let v = raw.replace(/[^0-9]/g, '')
+  if (v.startsWith('63') && v.length === 12) v = '0' + v.slice(2)
+  return v
+}
+
+export function validateGcashNumber(raw: string): string | null {
+  return /^09[0-9]{9}$/.test(normaliseGcashNumber(raw))
+    ? null
+    : 'Enter an 11-digit mobile number that starts with 09.'
+}
+
+export function validateGcashName(raw: string): string | null {
+  return raw.trim().length >= 2 ? null : 'Enter the name on the GCash account.'
+}
+
+/** The reference number printed on a GCash receipt. */
+export function validateGcashReference(raw: string): string | null {
+  return /^[A-Za-z0-9]{8,20}$/.test(raw.replace(/\s/g, ''))
+    ? null
+    : 'Enter the reference number from your GCash receipt (letters and numbers only).'
+}

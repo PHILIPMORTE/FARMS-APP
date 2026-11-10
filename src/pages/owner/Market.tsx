@@ -38,6 +38,13 @@ import { friendlyError, validateAmount, validateSacks, validateRequired } from '
 import { BuyerContactCard } from '@/components/BuyerContactCard'
 import { BuyerPurchases } from '@/components/BuyerPurchases'
 import { StageBadge } from '@/components/OrderTimeline'
+import {
+  GcashFields,
+  PayChips,
+  PayMethodPicker,
+  checkGcashFields,
+  useGcashDetails,
+} from '@/components/PaymentMethods'
 import type { Crop, Order, Product, Profile, Schedule } from '@/lib/types'
 
 export default function OwnerMarket() {
@@ -230,6 +237,7 @@ export default function OwnerMarket() {
                     </span>
                   )}
                   <p className="num text-[17px] font-bold text-brand-700">{peso(p.price)}</p>
+                  <PayChips cash={p.pay_cash} gcash={p.pay_gcash} />
                   <p className="text-[11px] text-soil-400">{perUnit(p.crop)} · {titleCase(p.crop)}</p>
 
                   <dl className="mt-1.5 space-y-0.5 border-t border-soil-200 pt-1.5 text-[11px]">
@@ -491,6 +499,18 @@ function AddProductDialog({
     price: '',
     form: 'unmilled' as 'unmilled' | 'milled',
   })
+  // How buyers may pay for this listing. Cash is the default; GCash is optional.
+  const [payCash, setPayCash] = useState(true)
+  const [payGcash, setPayGcash] = useState(false)
+  const gcash = useGcashDetails(open)
+
+  useEffect(() => {
+    if (open) {
+      setPayCash(true)
+      setPayGcash(false)
+    }
+  }, [open])
+
   const [existing, setExisting] = useState<Product | null>(null)
   const [photo, setPhoto] = useState<File | null>(null)
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
@@ -583,6 +603,12 @@ function AddProductDialog({
         ...(maxSacks !== null ? { max: maxSacks } : {}),
       }),
       price: validateAmount(form.price, 'price'),
+      ...(payGcash
+        ? {
+            gcash_number: checkGcashFields(gcash.number, gcash.name).number,
+            gcash_name: checkGcashFields(gcash.number, gcash.name).name,
+          }
+        : {}),
     }
     setErrors(next)
     if (Object.values(next).some(Boolean)) return
@@ -608,6 +634,18 @@ function AddProductDialog({
       photoUrl = supabase.storage.from('product-photos').getPublicUrl(path).data.publicUrl
     }
 
+    if (payGcash) {
+      const { error: gErr } = await supabase.rpc('save_gcash_details', {
+        p_number: gcash.number,
+        p_name: gcash.name,
+      })
+      if (gErr) {
+        setBusy(false)
+        toast.error(friendlyError(gErr))
+        return
+      }
+    }
+
     const { data, error } = await supabase.rpc('add_or_merge_product', {
       p_farm_id: farmId,
       p_variety: chosenVariety,
@@ -615,6 +653,8 @@ function AddProductDialog({
       p_quantity: parseInt(form.quantity, 10),
       p_price: Number(form.price),
       p_form: isRice ? form.form : 'unmilled',
+      p_pay_cash: payCash,
+      p_pay_gcash: payGcash,
     })
     setBusy(false)
 
@@ -803,6 +843,28 @@ function AddProductDialog({
           error={errors.price}
           onChange={(e) => set('price', e.target.value)}
         />
+
+        <div>
+          <label className="label">How will buyers pay?</label>
+          <PayMethodPicker
+            cash={payCash}
+            gcash={payGcash}
+            onChange={(c, g) => {
+              setPayCash(c)
+              setPayGcash(g)
+            }}
+          />
+          {payGcash && (
+            <GcashFields
+              number={gcash.number}
+              name={gcash.name}
+              onNumber={gcash.setNumber}
+              onName={gcash.setName}
+              errors={{ number: errors.gcash_number, name: errors.gcash_name }}
+            />
+          )}
+        </div>
+
         <div>
           <label className="label" htmlFor="prodphoto">
             Product photo
@@ -909,6 +971,10 @@ function EditStockDialog({
   const [error, setError] = useState<string | null>(null)
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [payCash, setPayCash] = useState(true)
+  const [payGcash, setPayGcash] = useState(false)
+  const [payErrors, setPayErrors] = useState<{ number?: string | null; name?: string | null }>({})
+  const gcash = useGcashDetails(!!product)
 
   useEffect(() => {
     if (product) {
@@ -916,6 +982,9 @@ function EditStockDialog({
       setReason('')
       setError(null)
       setConfirming(false)
+      setPayCash(product.pay_cash)
+      setPayGcash(product.pay_gcash)
+      setPayErrors({})
     }
   }, [product?.id])
 
@@ -942,7 +1011,37 @@ function EditStockDialog({
       return
     }
 
+    const payChanged = payCash !== product!.pay_cash || payGcash !== product!.pay_gcash
+    if (payGcash) {
+      const g = checkGcashFields(gcash.number, gcash.name)
+      setPayErrors(g)
+      if (g.number || g.name) return
+    }
+
     setBusy(true)
+    if (payGcash) {
+      const { error: gErr } = await supabase.rpc('save_gcash_details', {
+        p_number: gcash.number,
+        p_name: gcash.name,
+      })
+      if (gErr) {
+        setBusy(false)
+        toast.error(friendlyError(gErr))
+        return
+      }
+    }
+    if (payChanged) {
+      const { error: pErr } = await supabase.rpc('set_product_payment', {
+        p_product_id: product!.id,
+        p_cash: payCash,
+        p_gcash: payGcash,
+      })
+      if (pErr) {
+        setBusy(false)
+        toast.error(friendlyError(pErr))
+        return
+      }
+    }
     const { error: rpcError } = await supabase.rpc('update_product_listing', {
       p_product_id: product!.id,
       p_new_quantity: parseInt(qty, 10),
@@ -1014,6 +1113,27 @@ function EditStockDialog({
           }
           onChange={(e) => setNewPrice(e.target.value)}
         />
+
+        <div>
+          <label className="label">How buyers can pay</label>
+          <PayMethodPicker
+            cash={payCash}
+            gcash={payGcash}
+            onChange={(c, g) => {
+              setPayCash(c)
+              setPayGcash(g)
+            }}
+          />
+          {payGcash && (
+            <GcashFields
+              number={gcash.number}
+              name={gcash.name}
+              onNumber={gcash.setNumber}
+              onName={gcash.setName}
+              errors={payErrors}
+            />
+          )}
+        </div>
 
         <Field
           label="Reason for the change"

@@ -1052,7 +1052,7 @@ function AddPlantingDialog({
               )}
               <div className="rounded-lg bg-white/70 px-3 py-2.5 text-center">
                 <dt className="text-[11px] font-semibold uppercase tracking-wide text-brand-900/70">
-                  {inPieces ? `${pieceNoun(form.crop)}s` : 'Sacks'}
+                  {inPieces ? `Target ${pieceNoun(form.crop)}s` : 'Sacks'}
                 </dt>
                 <dd className="num text-[19px] font-bold text-brand-900">
                   {sacks(estimate.expected_sacks)}
@@ -1071,11 +1071,10 @@ function AddPlantingDialog({
 
             {inPieces && (
               <p className="mt-2 text-[11px] leading-relaxed text-brand-900/60">
-                Each {plantNoun(form.crop)} is expected to bear about {estimate.fruits_per_plant}{' '}
-                {pieceNoun(form.crop)}
-                {Number(estimate.fruits_per_plant) === 1 ? '' : 's'}, of which{' '}
-                {Math.round(Number(estimate.marketable_fraction ?? 0.8) * 100)}% are marketable, at
-                about {estimate.avg_fruit_kg} kg each.
+                The target is what this planting should bear when the plants are at their
+                healthiest: about {estimate.fruits_per_plant} {pieceNoun(form.crop)}
+                {Number(estimate.fruits_per_plant) === 1 ? '' : 's'} on each{' '}
+                {plantNoun(form.crop)}, around {estimate.avg_fruit_kg} kg each.
               </p>
             )}
 
@@ -1261,7 +1260,7 @@ function DetailDialog({
                 label={
                   schedule.crop === 'rice'
                     ? 'Expected sacks'
-                    : `Expected ${pieceNoun(schedule.crop)}s`
+                    : `Target ${pieceNoun(schedule.crop)}s`
                 }
                 value={sacksLabel(schedule.expected_sacks, schedule.crop)}
               />

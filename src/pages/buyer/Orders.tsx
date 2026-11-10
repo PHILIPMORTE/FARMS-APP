@@ -7,7 +7,19 @@ import { useAuth } from '@/context/AuthContext'
 import { DataTable, Dialog, Empty, Search, Spinner, Stat, TextArea, ViewToggle } from '@/components/ui'
 import { OrderTimeline, StageBadge } from '@/components/OrderTimeline'
 import { CROP_EMOJI, effectiveStage, peso, pesoShort, sacks, shortDate, weightNote, perUnit, sacksLabel } from '@/lib/format'
+import { MethodChip, OrderPaymentDialog } from '@/components/PaymentMethods'
 import type { Order, OrderEvent } from '@/lib/types'
+
+/** What the buyer should see about the payment, at a glance. */
+function payStatus(o: Order): { text: string; tone: 'green' | 'amber' | 'sky' } {
+  if (o.paid) return { text: 'Paid', tone: 'green' }
+  if (o.payment_method === 'gcash') {
+    return o.gcash_reference
+      ? { text: 'Reference sent', tone: 'sky' }
+      : { text: 'Send GCash payment', tone: 'amber' }
+  }
+  return { text: 'Pay on receipt', tone: 'sky' }
+}
 
 export default function BuyerOrders() {
   const { profile } = useAuth()
@@ -16,10 +28,21 @@ export default function BuyerOrders() {
   const [tab, setTab] = useState<string>('all')
   const [cancelling, setCancelling] = useState<Order | null>(null)
   const [rating, setRating] = useState<Order | null>(null)
+  const [payingFor, setPayingFor] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [view, setView] = useState<'grid' | 'table'>('grid')
   const [reason, setReason] = useState('')
   const [busy, setBusy] = useState(false)
+
+  async function reloadOrders() {
+    if (!profile) return
+    const { data } = await supabase
+      .from('orders')
+      .select('*, products(*, farms(name, city, province))')
+      .eq('buyer_id', profile.id)
+      .order('created_at', { ascending: false })
+    setOrders((data as unknown as Order[]) ?? [])
+  }
 
   async function confirmCancel() {
     if (!cancelling) return
@@ -192,6 +215,7 @@ export default function BuyerOrders() {
             { label: 'Farm' },
             { label: 'Quantity', align: 'right' },
             { label: 'Total', align: 'right' },
+            { label: 'Payment' },
             { label: 'Status' },
           ]}
         >
@@ -204,6 +228,26 @@ export default function BuyerOrders() {
               <td className="num px-4 py-3 text-right">{sacksLabel(o.quantity, o.products?.crop)}</td>
               <td className="num px-4 py-3 text-right font-bold text-brand-700">
                 {peso(o.total_price)}
+              </td>
+              <td className="px-4 py-3">
+                <button
+                  type="button"
+                  onClick={() => setPayingFor(o.id)}
+                  className="flex flex-col items-start gap-1 text-left"
+                >
+                  <MethodChip method={o.payment_method} />
+                  <span
+                    className={`text-[12px] font-semibold underline ${
+                      payStatus(o).tone === 'green'
+                        ? 'text-green-700'
+                        : payStatus(o).tone === 'amber'
+                          ? 'text-amber-700'
+                          : 'text-sky-700'
+                    }`}
+                  >
+                    {payStatus(o).text}
+                  </span>
+                </button>
               </td>
               <td className="px-4 py-3">
                 <StageBadge stage={effectiveStage(o)} />
@@ -262,6 +306,30 @@ export default function BuyerOrders() {
                   />
                 </div>
 
+                {effectiveStage(o) !== 'cancelled' && (
+                  <button
+                    type="button"
+                    onClick={() => setPayingFor(o.id)}
+                    className={`flex w-full items-center justify-between rounded-xl border-2 px-3.5 py-2.5 text-left transition ${
+                      o.paid
+                        ? 'border-green-200 bg-green-50'
+                        : o.payment_method === 'gcash' && !o.gcash_reference
+                          ? 'border-amber-300 bg-amber-50'
+                          : 'border-sky-200 bg-sky-50'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <MethodChip method={o.payment_method} />
+                      <span className="text-[13px] font-semibold text-soil-800">
+                        {payStatus(o).text}
+                      </span>
+                    </span>
+                    <span className="text-[12px] font-bold text-soil-600">
+                      {o.payment_method === 'gcash' && !o.paid ? 'Pay now ›' : 'Details ›'}
+                    </span>
+                  </button>
+                )}
+
                 {effectiveStage(o) === 'completed' && (
                   <button
                     className="btn-ghost w-full py-2 text-[13px]"
@@ -287,6 +355,13 @@ export default function BuyerOrders() {
           })}
         </div>
       )}
+      <OrderPaymentDialog
+        orderId={payingFor}
+        role="buyer"
+        onClose={() => setPayingFor(null)}
+        onChanged={() => reloadOrders()}
+      />
+
       <RateDialog
         open={rating !== null}
         onClose={() => setRating(null)}

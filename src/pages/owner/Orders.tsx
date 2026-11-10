@@ -31,6 +31,7 @@ import {
   stageIndex,
 } from '@/lib/format'
 import { displayPhone, friendlyError } from '@/lib/validation'
+import { MethodChip, OrderPaymentDialog } from '@/components/PaymentMethods'
 import type { Order, OrderEvent, OrderStage, Profile } from '@/lib/types'
 
 type Row = Order & { buyer?: Profile | null }
@@ -54,6 +55,7 @@ export default function OwnerOrders() {
   const [acting, setActing] = useState<{ order: Row; stage: OrderStage } | null>(null)
   const [view, setView] = useState<'grid' | 'table'>('table')
   const [settling, setSettling] = useState<string | null>(null)
+  const [payDetails, setPayDetails] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [varietyFilter, setVarietyFilter] = useState('all')
   const [sukiCounts, setSukiCounts] = useState<Record<string, number>>({})
@@ -323,16 +325,37 @@ export default function OwnerOrders() {
                           <td className="px-4 py-3">
                             {st === 'cancelled' ? (
                               <span className="text-[12px] text-soil-400">—</span>
-                            ) : o.paid ? (
-                              <Badge tone="green">Paid</Badge>
                             ) : (
-                              <button
-                                className="btn-sm bg-brand-600 text-white hover:bg-brand-700"
-                                disabled={settling === o.id}
-                                onClick={() => togglePaid(o)}
-                              >
-                                {settling === o.id ? '…' : 'Mark paid'}
-                              </button>
+                              <div className="flex flex-col items-start gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setPayDetails(o.id)}
+                                  className="flex items-center gap-1.5 text-left"
+                                  title="See the payment details"
+                                >
+                                  <MethodChip method={o.payment_method} />
+                                  {o.payment_method === 'gcash' && !o.paid && (
+                                    <span
+                                      className={`text-[11px] font-semibold underline ${
+                                        o.gcash_reference ? 'text-sky-700' : 'text-amber-700'
+                                      }`}
+                                    >
+                                      {o.gcash_reference ? `Ref ${o.gcash_reference}` : 'No reference yet'}
+                                    </span>
+                                  )}
+                                </button>
+                                {o.paid ? (
+                                  <Badge tone="green">Paid</Badge>
+                                ) : (
+                                  <button
+                                    className="btn-sm bg-brand-600 text-white hover:bg-brand-700"
+                                    disabled={settling === o.id}
+                                    onClick={() => togglePaid(o)}
+                                  >
+                                    {settling === o.id ? '…' : 'Mark paid'}
+                                  </button>
+                                )}
+                              </div>
                             )}
                           </td>
                           <td className="px-4 py-3 text-right">
@@ -449,6 +472,13 @@ export default function OwnerOrders() {
             ))}
         </div>
       )}
+
+      <OrderPaymentDialog
+        orderId={payDetails}
+        role="owner"
+        onClose={() => setPayDetails(null)}
+        onChanged={() => load()}
+      />
 
       <StageDialog
         acting={acting}

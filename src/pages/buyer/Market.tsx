@@ -18,6 +18,12 @@ import { TopFarms } from '@/components/TopFarms'
 import { FarmProfileDialog } from '@/components/FarmProfileDialog'
 import { CROPS, CROP_EMOJI, KG_PER_SACK, canBeMilled, perUnit, unitWord, unitOf, sacksLabel, availableSacks, peso, sacks, titleCase, toSacks } from '@/lib/format'
 import { friendlyError, validateSacks } from '@/lib/validation'
+import {
+  BuyerPayPicker,
+  PAY_LABEL,
+  PayChips,
+  type PayMethod,
+} from '@/components/PaymentMethods'
 import type { Product } from '@/lib/types'
 
 export default function BuyerMarket() {
@@ -391,6 +397,9 @@ export default function BuyerMarket() {
                     {unitOf(p.crop) === 'sack' ? ` · ${KG_PER_SACK} kg` : ''}
                     {canBeMilled(p.crop) ? ` · ${p.form === 'milled' ? 'milled' : 'unmilled'}` : ''}
                   </p>
+                  <div className="mt-1">
+                    <PayChips cash={p.pay_cash} gcash={p.pay_gcash} />
+                  </div>
 
                   <div className="mt-auto space-y-1 pt-1.5">
                     <p className="num text-[11px] text-soil-600">
@@ -457,11 +466,14 @@ function BuyDialog({
   const [qty, setQty] = useState('1')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [method, setMethod] = useState<PayMethod>('cash')
 
   useEffect(() => {
     if (product) {
       setQty('1')
       setError(null)
+      // Start on a way the farm accepts: cash if it does, otherwise GCash.
+      setMethod(product.pay_cash ? 'cash' : 'gcash')
     }
   }, [product?.id])
 
@@ -487,6 +499,7 @@ function BuyDialog({
     const { error: rpcError } = await supabase.rpc('purchase_product', {
       p_product_id: product!.id,
       p_quantity: parseInt(qty, 10),
+      p_payment_method: method,
     })
     setBusy(false)
 
@@ -494,7 +507,11 @@ function BuyDialog({
       toast.error(friendlyError(rpcError))
       return
     }
-    toast.success(`Ordered ${sacksLabel(qty, product?.crop)}`)
+    toast.success(
+      method === 'gcash'
+        ? `Ordered ${sacksLabel(qty, product?.crop)}. Open Orders to see the GCash number and send your payment.`
+        : `Ordered ${sacksLabel(qty, product?.crop)}`,
+    )
     onBought()
   }
 
@@ -563,6 +580,13 @@ function BuyDialog({
           </div>
         )}
 
+        <BuyerPayPicker
+          cash={product.pay_cash}
+          gcash={product.pay_gcash}
+          value={method}
+          onChange={setMethod}
+        />
+
         <dl className="space-y-2 rounded-xl bg-soil-50 px-4 py-3.5 text-sm">
           <div className="flex justify-between">
             <dt className="text-soil-600">
@@ -578,6 +602,10 @@ function BuyDialog({
               </dd>
             </div>
           )}
+          <div className="flex justify-between">
+            <dt className="text-soil-600">Payment</dt>
+            <dd className="font-semibold">{PAY_LABEL[method]}</dd>
+          </div>
           <div className="flex justify-between border-t border-soil-200 pt-2">
             <dt className="font-bold">Total price</dt>
             <dd className="num text-base font-bold text-brand-700">{valid ? peso(total) : '—'}</dd>
