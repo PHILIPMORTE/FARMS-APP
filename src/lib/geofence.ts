@@ -7,8 +7,8 @@
  */
 
 export interface ClockPlace {
-  /** The farm owner's switch. When false, no location is asked for or checked. */
-  require_gps: boolean | null
+  /** The owner's choice for this job. When false, no location is asked for or checked. */
+  geofenced: boolean | null
   max_accuracy_m: number | null
   latitude: number | null
   longitude: number | null
@@ -64,7 +64,7 @@ export function metresBetween(aLat: number, aLng: number, bLat: number, bLng: nu
 /** Whether the farm owner's location check applies to this job at all. */
 export function usesLocationCheck(pl: ClockPlace | null | undefined): boolean {
   if (!pl) return false
-  if (pl.require_gps === false) return false
+  if (pl.geofenced === false) return false
   return hasBoundary(pl) || (pl.latitude != null && pl.longitude != null)
 }
 

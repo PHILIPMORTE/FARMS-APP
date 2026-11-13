@@ -1075,8 +1075,8 @@ function AddPlantingDialog({
               </p>
             </div>
 
-            <dl className={`mt-3 grid gap-3 ${inPieces ? 'grid-cols-3' : 'grid-cols-2'}`}>
-              {inPieces && (
+            <dl className={`mt-3 grid gap-3 ${inPieces && !isMelon ? 'grid-cols-3' : 'grid-cols-2'}`}>
+              {inPieces && !isMelon && (
                 <div className="rounded-lg bg-white/70 px-3 py-2.5 text-center">
                   <dt className="text-[11px] font-semibold uppercase tracking-wide text-brand-900/70">
                     {plantNoun(form.crop)}s
@@ -1108,9 +1108,12 @@ function AddPlantingDialog({
             {inPieces && (
               <p className="mt-2 text-[11px] leading-relaxed text-brand-900/60">
                 The target is what this planting should bear when the plants are at their
-                healthiest: about {estimate.fruits_per_plant} {pieceNoun(form.crop)}
-                {Number(estimate.fruits_per_plant) === 1 ? '' : 's'} on each{' '}
-                {plantNoun(form.crop)}, around {estimate.avg_fruit_kg} kg each.
+                healthiest
+                {isMelon
+                  ? `, at around ${estimate.avg_fruit_kg} kg a fruit.`
+                  : `: about ${estimate.fruits_per_plant} ${pieceNoun(form.crop)}${
+                      Number(estimate.fruits_per_plant) === 1 ? '' : 's'
+                    } on each ${plantNoun(form.crop)}, around ${estimate.avg_fruit_kg} kg each.`}
               </p>
             )}
 
@@ -1123,8 +1126,10 @@ function AddPlantingDialog({
                   {Math.round(land.sqm).toLocaleString()} m²
                 </p>
                 <p className="mt-0.5 text-[11px] text-brand-900/60">
-                  {(land as any).caption ??
-                    `${land.kg_per_hectare} kg of seed covers 10,000 m² of ${titleCase(form.crop)}`}
+                  {isMelon
+                    ? `${Math.round(land.kg_per_hectare * 1000)} g of seed covers 10,000 m² of Watermelon`
+                    : ((land as any).caption ??
+                      `${land.kg_per_hectare} kg of seed covers 10,000 m² of ${titleCase(form.crop)}`)}
                 </p>
               </div>
             )}

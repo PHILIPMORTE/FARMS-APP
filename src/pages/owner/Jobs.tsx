@@ -3,7 +3,7 @@ import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import { PurokSelect, usePuroks } from '@/components/PurokSelect'
 import { useAuth } from '@/context/AuthContext'
-import { GeofenceSwitch } from '@/components/GeofenceSwitch'
+import { GeofenceChoice } from '@/components/GeofenceChoice'
 import {
   Badge,
   Dialog,
@@ -95,8 +95,6 @@ export default function OwnerJobs() {
           Post a job
         </button>
       </div>
-
-      <GeofenceSwitch />
 
       <div role="tablist" className="grid grid-cols-2 gap-1 rounded-xl bg-soil-100 p-1">
         <button
@@ -227,6 +225,9 @@ function PostsTab({
 
             <div className="flex flex-wrap gap-2">
               <Badge tone="brand">{p.type}</Badge>
+              <Badge tone={p.geofenced === false ? 'grey' : 'green'}>
+                {p.geofenced === false ? 'Not geofenced' : 'Geofenced'}
+              </Badge>
               <Badge>
                 <span className="num">{peso(p.wage)}</span>&nbsp;a day
               </Badge>
@@ -563,6 +564,8 @@ function PostJobDialog({
   const [busy, setBusy] = useState(false)
   const puroks = usePuroks()
   const purokName = (id: string) => puroks.find((p) => p.id === id)?.name ?? ''
+  // The owner decides, for this job, whether workers must be inside the purok to time in and out.
+  const [geofenced, setGeofenced] = useState(true)
 
   const set = (k: string, v: string) => {
     setForm((f) => ({ ...f, [k]: v }))
@@ -598,6 +601,7 @@ function PostJobDialog({
       slots: parseInt(form.slots, 10),
       location: purokName(form.purok_id) || defaultLocation,
       purok_id: form.purok_id || null,
+      geofenced,
       start_date: form.start_date,
       end_date: form.end_date || null,
       status: 'open',
@@ -730,8 +734,10 @@ function PostJobDialog({
           value={form.purok_id}
           error={errors.purok_id}
           onChange={(id) => set('purok_id', id)}
-          hint="Where the work is. If geofencing is on, workers can record time only while inside this purok."
+          hint="Where the work is."
         />
+
+        <GeofenceChoice value={geofenced} onChange={setGeofenced} purok={purokName(form.purok_id)} />
 
       </form>
     </Dialog>

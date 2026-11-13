@@ -82,7 +82,7 @@ export default function FarmerJobs() {
     const [{ data: posts }, { data: apps }] = await Promise.all([
       supabase
         .from('job_posts')
-        .select('*, farms(name, city, province, require_gps)')
+        .select('*, farms(name, city, province)')
         .order('created_at', { ascending: false }),
       profile
         ? supabase.from('job_applications').select('*').eq('farmer_id', profile.id)
@@ -265,8 +265,8 @@ export default function FarmerJobs() {
               <Row
                 label="Time clock"
                 value={
-                  details.farms?.require_gps === false
-                    ? 'This farm has geofencing turned off. You can record your time from anywhere.'
+                  details.geofenced === false
+                    ? 'This job is not geofenced. You can record your time from anywhere.'
                     : details.location
                       ? `You may record time in and out only while inside ${details.location}.`
                       : 'Set by the farm owner.'

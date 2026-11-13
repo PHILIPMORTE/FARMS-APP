@@ -52,7 +52,7 @@ interface JobPlace {
   latitude: number | null
   longitude: number | null
   radius_m: number
-  require_gps: boolean
+  geofenced: boolean
   max_accuracy_m: number
   purok_id: string | null
   purok_name: string | null
@@ -322,8 +322,8 @@ export default function FarmerLogs() {
 
       {activePlace && !checkedHere && (
         <div className="rounded-xl border border-soil-200 bg-soil-50 px-4 py-3 text-[13px] leading-relaxed text-soil-600">
-          {activePlace.require_gps === false
-            ? `${activePlace.farm_name} has geofencing turned off, so you can record your time from anywhere.`
+          {activePlace.geofenced === false
+            ? 'This job is not geofenced, so you can record your time from anywhere.'
             : 'There is nothing to check your location against for this job, so you can record your time.'}
         </div>
       )}
