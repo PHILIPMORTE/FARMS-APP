@@ -46,6 +46,7 @@ export interface Farm {
   latitude?: number | null
   longitude?: number | null
   clock_radius_m?: number
+  require_gps?: boolean
   address: string | null
   city: string | null
   province: string | null
@@ -82,7 +83,7 @@ export interface JobPost {
   end_date: string | null
   status: JobStatus
   created_at: string
-  farms?: { name: string; city: string | null; province: string | null } | null
+  farms?: { name: string; city: string | null; province: string | null; require_gps?: boolean } | null
 }
 
 export interface JobApplication {

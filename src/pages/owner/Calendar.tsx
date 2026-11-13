@@ -28,7 +28,13 @@ import {
 } from '@/lib/format'
 import { friendlyError, validateRequired } from '@/lib/validation'
 import type { Crop, Schedule } from '@/lib/types'
+import { STAGE_STYLE, growthStage, type GrowthStage } from '@/lib/growth'
 
+// Demonstration setting. While true, the Harvest now button is clickable at every
+// growth stage, so the panel can see what happens when a crop is harvested early:
+// the system warns how much of the growing period has passed, and records the
+// quantity actually harvested. Set it to false to allow harvesting only once a
+// planting has reached 100%.
 const ALLOW_EARLY_HARVEST_FOR_TESTING = true
 
 const EXPENSE_CATEGORIES = [
@@ -75,6 +81,14 @@ export default function OwnerCalendar() {
   useEffect(() => {
     load()
   }, [load])
+
+  // A planting that has turned yellow or green since the owner was last here gets
+  // its notice now. Each notice is sent once per planting.
+  useEffect(() => {
+    supabase.rpc('notify_ready_harvests').then(({ error }) => {
+      if (error) console.warn('Growth notices skipped:', error.message)
+    })
+  }, [])
 
   const varieties = useMemo(
     () => [...new Set((rows ?? []).map((r) => r.variety).filter(Boolean))].sort(),
@@ -358,6 +372,8 @@ function CalendarView({
           </span>
         </div>
 
+        <GrowthLegend />
+
         <div className="grid grid-cols-7 gap-1.5 text-center sm:gap-2">
           {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
             <div
@@ -412,29 +428,30 @@ function CalendarView({
                           ? total
                           : Math.min(Math.max(daysBetween(r.planting_date!, today), 0), total)
                       const pct = Math.round((done / total) * 100)
+                      const stage = r.status === 'harvested' ? null : STAGE_STYLE[growthStage(pct)]
 
                       return (
                         <button
                           key={r.id}
                           onClick={() => onOpen(r)}
-                          title={`${r.variety || titleCase(r.crop)} — ${pct}% grown`}
+                          title={`${r.variety || titleCase(r.crop)} — ${pct}% grown${
+                            stage ? ` — ${stage.label}` : ''
+                          }`}
                           className="relative block overflow-hidden rounded bg-soil-100 text-left"
                         >
                           <span
                             aria-hidden
-                            className={`absolute inset-y-0 left-0 ${CROP_COLOR[r.crop].bar}`}
+                            className={`absolute inset-y-0 left-0 ${stage ? stage.bar : CROP_COLOR[r.crop].bar}`}
                             style={{ width: `${Math.max(pct, 12)}%` }}
                           />
                           <span
-                            className={`relative flex items-center gap-1 px-1.5 py-1 text-[10px] font-semibold ${
-                              pct > 55 ? 'text-white' : 'text-soil-800'
-                            }`}
+                            className="relative flex items-center gap-1 px-1.5 py-1 text-[10px] font-semibold text-soil-800"
                           >
-                            <span className="truncate">
+                            <span className="truncate rounded bg-white/85 px-1">
                               {r.variety || titleCase(r.crop)}
                               {r.field_name ? ` · ${r.field_name}` : ''}
                             </span>
-                            <span className="num ml-auto shrink-0 opacity-90">{pct}%</span>
+                            <span className="num ml-auto shrink-0 rounded bg-white/85 px-1">{pct}%</span>
                           </span>
                         </button>
                       )
@@ -481,6 +498,21 @@ function CalendarView({
 
       </div>
 
+    </div>
+  )
+}
+
+function GrowthLegend() {
+  const order: GrowthStage[] = ['early', 'almost', 'ready']
+  return (
+    <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[12px] text-soil-600">
+      <span className="font-semibold text-soil-800">Growth bar</span>
+      {order.map((k) => (
+        <span key={k} className="flex items-center gap-1.5">
+          <span aria-hidden className={`h-2.5 w-5 rounded-full ${STAGE_STYLE[k].bar}`} />
+          {STAGE_STYLE[k].legend}
+        </span>
+      ))}
     </div>
   )
 }
@@ -571,6 +603,10 @@ function TableView({
         </h2>
       </div>
 
+      <div className="border-b border-soil-200 px-4 pt-3">
+        <GrowthLegend />
+      </div>
+
       <div className="max-h-[36rem] overflow-y-auto">
         {days.map((d) => {
           const key = iso(d)
@@ -624,6 +660,7 @@ function TableView({
                     const done = row.status === 'harvested'
                     const pct = done ? 100 : total ? Math.round((elapsed / total) * 100) : 0
                     const left = Math.max(total - elapsed, 0)
+                    const stage = done ? null : STAGE_STYLE[growthStage(pct)]
 
                     return (
                       <button
@@ -636,35 +673,36 @@ function TableView({
                           `Expected ${unitWord(row.crop, 2)}: ${sacks(row.expected_sacks)}`,
                           done
                             ? 'Harvested'
-                            : `${pct}% grown - day ${elapsed} of ${total}, ${left} days left`,
+                            : `${pct}% grown - day ${elapsed} of ${total}, ${left} days left - ${stage?.label}`,
                         ].join('\n')}
                         className="relative block w-full overflow-hidden rounded border border-soil-200 bg-soil-100 text-left transition hover:shadow-sm"
                       >
                         <span
                           aria-hidden
-                          className={`absolute inset-y-0 left-0 transition-all duration-500 ${c.bar}`}
-                          style={{ width: `${Math.max(pct, 6)}%` }}
+                          className={`absolute inset-y-0 left-0 transition-all duration-500 ${stage ? stage.bar : c.bar}`}
+                          style={{ width: `${Math.max(pct, 5)}%` }}
                         />
 
                         <span className="relative flex items-center gap-2 px-2.5 py-1.5">
                           <span className="text-[13px]">{kind === 'plant' ? '🌱' : '🌾'}</span>
                           <span
-                            className={`truncate text-[13px] font-semibold ${
-                              pct > 18 ? 'text-white' : 'text-soil-800'
-                            }`}
+                            className="truncate rounded bg-white/85 px-1.5 py-0.5 text-[13px] font-semibold text-soil-800"
                           >
                             {kind === 'plant' ? 'Planted' : 'Expected harvest'} ·{' '}
                             {row.variety || titleCase(row.crop)}
                           </span>
 
                           <span
-                            className={`num ml-auto shrink-0 text-[12px] font-semibold ${
-                              pct > 88 ? 'text-white' : 'text-soil-600'
-                            }`}
+                            className="num ml-auto shrink-0 rounded bg-white/85 px-1.5 py-0.5 text-[12px] font-semibold text-soil-700"
                           >
-                            {done
-                              ? `Harvested · ${sacksLabel(row.actual_sacks ?? 0, row.crop)}`
-                              : `${pct}%`}
+                            {done ? (
+                              `Harvested · ${sacksLabel(row.actual_sacks ?? 0, row.crop)}`
+                            ) : (
+                              <>
+                                {pct}%
+                                <span className="hidden sm:inline"> · {stage?.label}</span>
+                              </>
+                            )}
                           </span>
 
                           {!done && (pct >= 100 || ALLOW_EARLY_HARVEST_FOR_TESTING) && (
@@ -682,13 +720,11 @@ function TableView({
                                   onHarvest(row)
                                 }
                               }}
-                              className={`shrink-0 cursor-pointer rounded px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-white shadow-sm transition ${
-                                pct >= 100
-                                  ? 'bg-green-600 hover:bg-green-700'
-                                  : 'bg-red-600 hover:bg-red-700'
+                              className={`shrink-0 cursor-pointer rounded px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide shadow-sm ring-2 ring-white transition ${
+                                stage ? stage.button : 'bg-green-600 text-white hover:bg-green-700'
                               }`}
                             >
-                              {pct >= 100 ? 'Harvest' : 'Harvest now'}
+                              Harvest now
                             </span>
                           )}
                         </span>
@@ -1351,7 +1387,7 @@ function DetailDialog({
                   <span className="mt-0.5 block text-[13px] leading-relaxed text-amber-800">
                     It is {pct}% grown, with {total - done} day{total - done === 1 ? '' : 's'} left
                     until {shortDate(schedule.harvest_date)}. Harvesting early usually means fewer
-                    and lighter sacks than the estimate.
+                    and lighter {unitWord(schedule.crop, 2)} than the target.
                   </span>
                 </span>
               </div>

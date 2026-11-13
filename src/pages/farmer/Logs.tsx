@@ -2,6 +2,15 @@ import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import { PurokMap } from '@/components/PurokMap'
+import {
+  canRecord,
+  checkPlace,
+  hasBoundary,
+  isPhone,
+  metresBetween,
+  usesLocationCheck,
+  type Verdict,
+} from '@/lib/geofence'
 import { useAuth } from '@/context/AuthContext'
 import { Empty, SectionHeading, Spinner, Stat } from '@/components/ui'
 import { hours, todayISO, peso , refreshBadges } from '@/lib/format'
@@ -48,37 +57,6 @@ interface JobPlace {
   purok_id: string | null
   purok_name: string | null
   purok_boundary: number[][] | null
-}
-
-/** Ray casting, the same test the database performs before accepting a record. */
-function insideBoundary(lat: number, lng: number, ring: number[][]): boolean {
-  if (!ring || ring.length < 3) return false
-  let inside = false
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const [xi, yi] = ring[i]
-    const [xj, yj] = ring[j]
-    if (yi > lat !== yj > lat && lng < ((xj - xi) * (lat - yi)) / (yj - yi || 1e-12) + xi) {
-      inside = !inside
-    }
-  }
-  return inside
-}
-
-function metresBetween(
-  aLat: number,
-  aLng: number,
-  bLat: number,
-  bLng: number,
-): number {
-  const R = 6371000
-  const p1 = (aLat * Math.PI) / 180
-  const p2 = (bLat * Math.PI) / 180
-  const dp = ((bLat - aLat) * Math.PI) / 180
-  const dl = ((bLng - aLng) * Math.PI) / 180
-  const x =
-    Math.sin(dp / 2) * Math.sin(dp / 2) +
-    Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) * Math.sin(dl / 2)
-  return Math.round(R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x)))
 }
 
 interface OpenShift {
@@ -162,7 +140,16 @@ export default function FarmerLogs() {
     return () => clearInterval(t)
   }, [])
 
+  // The position is requested only when a farm you work for uses the location
+  // check. Where the owner has switched it off, the phone is never asked.
+  const needsLocation = places.some((pl) => usesLocationCheck(pl))
+
   useEffect(() => {
+    if (!needsLocation) {
+      setHere(null)
+      setGeoError(null)
+      return
+    }
     if (!navigator.geolocation) {
       setGeoError('This device cannot share its location.')
       return
@@ -176,7 +163,7 @@ export default function FarmerLogs() {
       { enableHighAccuracy: true, maximumAge: 15000, timeout: 20000 },
     )
     return () => navigator.geolocation.clearWatch(watch)
-  }, [])
+  }, [needsLocation])
 
   function getPosition(): Promise<GeolocationPosition> {
     return new Promise((resolve, reject) => {
@@ -201,20 +188,29 @@ export default function FarmerLogs() {
       return
     }
 
+    const checked = usesLocationCheck(places.find((p) => p.job_id === jobId))
     setBusy(true)
-    let pos: GeolocationPosition
-    try {
-      pos = await getPosition()
-    } catch (err) {
-      setBusy(false)
-      toast.error(String((err as Error).message))
-      return
+    let pos: GeolocationPosition | null = null
+    if (checked) {
+      try {
+        pos = await getPosition()
+      } catch (err) {
+        setBusy(false)
+        toast.error(String((err as Error).message))
+        return
+      }
     }
 
     const { error } = await supabase.rpc('farmer_time_in', {
       p_job_id: jobId,
-      p_latitude: pos.coords.latitude,
-      p_longitude: pos.coords.longitude,
+      ...(pos
+        ? {
+            p_latitude: pos.coords.latitude,
+            p_longitude: pos.coords.longitude,
+            p_accuracy: pos.coords.accuracy,
+            p_device: isPhone() ? 'mobile' : 'desktop',
+          }
+        : {}),
     })
     setBusy(false)
     if (error) {
@@ -250,20 +246,27 @@ export default function FarmerLogs() {
   }
 
   async function timeOut() {
+    const checked = usesLocationCheck(places.find((p) => p.job_id === shift?.job_id))
     setBusy(true)
-    let pos: GeolocationPosition
-    try {
-      pos = await getPosition()
-    } catch (err) {
-      setBusy(false)
-      toast.error(String((err as Error).message))
-      return
+    let pos: GeolocationPosition | null = null
+    if (checked) {
+      try {
+        pos = await getPosition()
+      } catch (err) {
+        setBusy(false)
+        toast.error(String((err as Error).message))
+        return
+      }
     }
 
-    const { error } = await supabase.rpc('farmer_time_out', {
-      p_latitude: pos.coords.latitude,
-      p_longitude: pos.coords.longitude,
-    })
+    const { error } = await supabase.rpc('farmer_time_out', pos
+      ? {
+          p_latitude: pos.coords.latitude,
+          p_longitude: pos.coords.longitude,
+          p_accuracy: pos.coords.accuracy,
+          p_device: isPhone() ? 'mobile' : 'desktop',
+        }
+      : {})
     setBusy(false)
     if (error) {
       toast.error(friendlyError(error))
@@ -292,25 +295,20 @@ export default function FarmerLogs() {
   const inPlace = placeFor(jobId)
   const outPlace = placeFor(shift?.job_id)
 
-  function distanceTo(pl: JobPlace | null): number | null {
-    if (!pl || pl.latitude == null || pl.longitude == null || !here) return null
-    return metresBetween(here.lat, here.lng, Number(pl.latitude), Number(pl.longitude))
-  }
+  const phoneOk = isPhone()
+  const inVerdict: Verdict = checkPlace(inPlace, here)
+  const outVerdict: Verdict = checkPlace(outPlace, here)
+  const inFenced = usesLocationCheck(inPlace)
+  const outFenced = usesLocationCheck(outPlace)
 
-  const inDistance = distanceTo(inPlace)
-  const outDistance = distanceTo(outPlace)
+  // A checked place also needs a phone, because the server refuses a computer.
+  const canTimeIn = canRecord(inVerdict) && !(inFenced && !phoneOk)
+  const canTimeOut = canRecord(outVerdict) && !(outFenced && !phoneOk)
 
-  const hasPurok = (pl: JobPlace | null) =>
-    !!(pl?.purok_boundary && pl.purok_boundary.length >= 3)
-
-  const inPurok = (pl: JobPlace | null) =>
-    !!(hasPurok(pl) && here && insideBoundary(here.lat, here.lng, pl!.purok_boundary!))
-
-  const inFenced = !!(inPlace && (hasPurok(inPlace) || inPlace.latitude != null))
-  const outFenced = !!(outPlace && (hasPurok(outPlace) || outPlace.latitude != null))
-
-  const canTimeIn = !inFenced || (inDistance != null && inDistance <= (inPlace?.radius_m ?? 300))
-  const canTimeOut = !outFenced || (outDistance != null && outDistance <= (outPlace?.radius_m ?? 300))
+  const activePlace = shift ? outPlace : inPlace
+  const verdict: Verdict = shift ? outVerdict : inVerdict
+  const activeOk = shift ? canTimeOut : canTimeIn
+  const checkedHere = usesLocationCheck(activePlace)
 
   return (
     <div className="animate-fade-up space-y-6">
@@ -322,92 +320,100 @@ export default function FarmerLogs() {
         </p>
       </div>
 
-      {(inFenced || outFenced) && (
-        <div
-          className={`rounded-xl border px-4 py-3.5 ${
-            geoError
-              ? 'border-red-200 bg-red-50'
-              : (shift ? canTimeOut : canTimeIn)
-                ? 'border-green-200 bg-green-50'
-                : 'border-amber-200 bg-amber-50'
-          }`}
-        >
-          {geoError ? (
-            <p className="text-[13px] font-semibold text-red-700">{geoError}</p>
-          ) : here === null ? (
-            <p className="text-[13px] text-soil-600">Finding where you are…</p>
-          ) : (
-            (() => {
-              const pl = shift ? outPlace : inPlace
-              const d = shift ? outDistance : inDistance
-              const ok = shift ? canTimeOut : canTimeIn
-              const fencedByPurok = hasPurok(pl)
-              return (
-                <>
-                  <p
-                    className={`text-[14px] font-bold ${
-                      ok ? 'text-green-800' : 'text-amber-900'
-                    }`}
-                  >
-                    {fencedByPurok
-                      ? ok
-                        ? `You are inside ${pl?.purok_name}`
-                        : `You are not inside ${pl?.purok_name}`
-                      : ok
-                        ? `You are at ${pl?.farm_name}`
-                        : `You are not at ${pl?.farm_name} yet`}
-                  </p>
-                  <p
-                    className={`mt-0.5 text-[13px] leading-relaxed ${
-                      ok ? 'text-green-700' : 'text-amber-800'
-                    }`}
-                  >
-                    {fencedByPurok ? (
-                      ok ? (
-                        <>This job is in {pl?.purok_name}, and you are standing in it.</>
-                      ) : (
-                        <>
-                          This job is in {pl?.purok_name}. You can record your time only from
-                          inside that purok.
-                        </>
-                      )
-                    ) : (
-                      <>
-                        About <span className="num font-semibold">{d} m</span> away.{' '}
-                        {ok
-                          ? 'You are close enough to record your time.'
-                          : `Move within ${pl?.radius_m} m of the farm.`}
-                      </>
-                    )}
-                    <span className="block text-[11px] opacity-70">
-                      Location accurate to about {Math.round(here.acc)} m
-                    </span>
-                  </p>
-                </>
-              )
-            })()
-          )}
+      {activePlace && !checkedHere && (
+        <div className="rounded-xl border border-soil-200 bg-soil-50 px-4 py-3 text-[13px] leading-relaxed text-soil-600">
+          {activePlace.require_gps === false
+            ? `${activePlace.farm_name} has geofencing turned off, so you can record your time from anywhere.`
+            : 'There is nothing to check your location against for this job, so you can record your time.'}
         </div>
       )}
 
-      {(inFenced || outFenced) && (() => {
-        const pl = shift ? outPlace : inPlace
-        const ok = shift ? canTimeOut : canTimeIn
-        if (!pl) return null
-        return (
+      {activePlace && checkedHere && (
+        <>
+          <div
+            className={`rounded-xl border px-4 py-3.5 ${
+              geoError || !phoneOk
+                ? 'border-red-200 bg-red-50'
+                : activeOk
+                  ? 'border-green-200 bg-green-50'
+                  : 'border-amber-200 bg-amber-50'
+            }`}
+          >
+            {geoError ? (
+              <p className="text-[13px] font-semibold text-red-700">{geoError}</p>
+            ) : !phoneOk ? (
+              <>
+                <p className="text-[14px] font-bold text-red-800">Use your phone</p>
+                <p className="mt-0.5 text-[13px] leading-relaxed text-red-700">
+                  Time in and out are accepted from a phone only, because a computer cannot
+                  tell where it is accurately enough.
+                </p>
+              </>
+            ) : verdict === 'waiting' || !here ? (
+              <p className="text-[13px] text-soil-600">Finding where you are…</p>
+            ) : verdict === 'inaccurate' ? (
+              <>
+                <p className="text-[14px] font-bold text-amber-900">Your location is not accurate enough</p>
+                <p className="mt-0.5 text-[13px] leading-relaxed text-amber-800">
+                  It is only accurate to about <span className="num font-semibold">{Math.round(here.acc)} m</span>.
+                  Go outside and wait a moment for the GPS to settle. The limit is{' '}
+                  {activePlace.max_accuracy_m ?? 75} m.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className={`text-[14px] font-bold ${activeOk ? 'text-green-800' : 'text-amber-900'}`}>
+                  {hasBoundary(activePlace)
+                    ? activeOk
+                      ? `You are inside ${activePlace.purok_name}`
+                      : `You are not inside ${activePlace.purok_name}`
+                    : activeOk
+                      ? `You are at ${activePlace.farm_name}`
+                      : `You are not at ${activePlace.farm_name} yet`}
+                </p>
+                <p className={`mt-0.5 text-[13px] leading-relaxed ${activeOk ? 'text-green-700' : 'text-amber-800'}`}>
+                  {hasBoundary(activePlace) ? (
+                    activeOk ? (
+                      <>This job is in {activePlace.purok_name}, and you are standing in it.</>
+                    ) : (
+                      <>
+                        This job is in {activePlace.purok_name}. You can record your time only from
+                        inside that purok.
+                      </>
+                    )
+                  ) : (
+                    <>
+                      About{' '}
+                      <span className="num font-semibold">
+                        {metresBetween(here.lat, here.lng, Number(activePlace.latitude), Number(activePlace.longitude))} m
+                      </span>{' '}
+                      away.{' '}
+                      {activeOk
+                        ? 'You are close enough to record your time.'
+                        : `Move within ${activePlace.radius_m} m of the farm.`}
+                    </>
+                  )}
+                  <span className="block text-[11px] opacity-70">
+                    Location accurate to about {Math.round(here.acc)} m
+                  </span>
+                </p>
+              </>
+            )}
+          </div>
+
           <PurokMap
-            boundary={pl.purok_boundary}
-            purokName={pl.purok_name}
+            boundary={activePlace.purok_boundary}
+            purokName={activePlace.purok_name}
             here={here}
-            inside={ok}
+            inside={activeOk}
             farm={
-              pl.latitude != null && pl.longitude != null
-                ? { lat: Number(pl.latitude), lng: Number(pl.longitude), name: pl.farm_name }
+              activePlace.latitude != null && activePlace.longitude != null
+                ? { lat: Number(activePlace.latitude), lng: Number(activePlace.longitude), name: activePlace.farm_name }
                 : null
             }
           />
-        )
-      })()}
+        </>
+      )}
 
       <div className="card p-6 text-center">
         <p className="text-[12px] font-semibold uppercase tracking-wide text-soil-400">

@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import { PurokSelect, usePuroks } from '@/components/PurokSelect'
 import { useAuth } from '@/context/AuthContext'
+import { GeofenceSwitch } from '@/components/GeofenceSwitch'
 import {
   Badge,
   Dialog,
@@ -94,6 +95,8 @@ export default function OwnerJobs() {
           Post a job
         </button>
       </div>
+
+      <GeofenceSwitch />
 
       <div role="tablist" className="grid grid-cols-2 gap-1 rounded-xl bg-soil-100 p-1">
         <button
@@ -727,7 +730,7 @@ function PostJobDialog({
           value={form.purok_id}
           error={errors.purok_id}
           onChange={(id) => set('purok_id', id)}
-          hint="Workers can record time in and out only while inside this purok."
+          hint="Where the work is. If geofencing is on, workers can record time only while inside this purok."
         />
 
       </form>

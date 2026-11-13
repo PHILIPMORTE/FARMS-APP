@@ -82,7 +82,7 @@ export default function FarmerJobs() {
     const [{ data: posts }, { data: apps }] = await Promise.all([
       supabase
         .from('job_posts')
-        .select('*, farms(name, city, province)')
+        .select('*, farms(name, city, province, require_gps)')
         .order('created_at', { ascending: false }),
       profile
         ? supabase.from('job_applications').select('*').eq('farmer_id', profile.id)
@@ -265,9 +265,11 @@ export default function FarmerJobs() {
               <Row
                 label="Time clock"
                 value={
-                  details.location
-                    ? `You may record time in and out only while inside ${details.location}.`
-                    : 'Set by the farm owner.'
+                  details.farms?.require_gps === false
+                    ? 'This farm has geofencing turned off. You can record your time from anywhere.'
+                    : details.location
+                      ? `You may record time in and out only while inside ${details.location}.`
+                      : 'Set by the farm owner.'
                 }
               />
               <Row label="Starts" value={shortDate(details.start_date)} />

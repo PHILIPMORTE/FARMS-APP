@@ -299,7 +299,12 @@ export default function OwnerAttendance() {
                     </td>
                     <td className="px-4 py-2.5">
                       {r.in_distance_m == null ? (
-                        <span className="text-[12px] text-soil-400">—</span>
+                        <span
+                          className="text-[12px] text-soil-400"
+                          title="The location was not checked for this shift"
+                        >
+                          Not checked
+                        </span>
                       ) : (
                         <span
                           className={`chip ${

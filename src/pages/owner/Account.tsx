@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import { useAuth, isPhoneTakenForRole } from '@/context/AuthContext'
+import { GeofenceSwitch } from '@/components/GeofenceSwitch'
 import { AccountHeader } from '@/components/AccountHeader'
 import { PurokFromPin, PurokSelect } from '@/components/PurokSelect'
 import { RatingBadge } from '@/components/Ratings'
@@ -143,6 +144,11 @@ export default function OwnerAccount() {
             <Field label="Province" value={form.province ?? ''} onChange={(e) => set('province', e.target.value)} />
             <Field label="ZIP code" inputMode="numeric" value={form.zip_code ?? ''} onChange={(e) => set('zip_code', e.target.value)} />
           </div>
+        </section>
+
+        <section>
+          <SectionHeading>Time clock</SectionHeading>
+          <GeofenceSwitch />
         </section>
 
         <button className="btn-primary w-full sm:w-auto" disabled={busy}>
