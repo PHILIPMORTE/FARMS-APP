@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
-import { useAuth, setActiveRole } from '@/context/AuthContext'
+import { useAuth, setActiveRole, getActiveRole } from '@/context/AuthContext'
 import { Field, Spinner } from '@/components/ui'
 import { Wordmark } from '@/components/AppShell'
 import { ROLE_HOME, ROLE_LABEL } from '@/lib/format'
@@ -14,7 +14,7 @@ export default function AuthCallback() {
   const navigate = useNavigate()
   const { completeGoogleProfile, refresh } = useAuth()
 
-  const role = (params.get('role') as Role) ?? 'owner'
+  const role = ((params.get('role') as Role | null) ?? getActiveRole() ?? 'owner') as Role
   const [checking, setChecking] = useState(true)
   const [googleEmail, setGoogleEmail] = useState('')
   const [form, setForm] = useState({ name: '', phone: '' })

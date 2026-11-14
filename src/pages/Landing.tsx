@@ -1,5 +1,8 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Navigate, useNavigate } from 'react-router-dom'
+import { useAuth } from '@/context/AuthContext'
+import { Spinner } from '@/components/ui'
+import { ROLE_HOME } from '@/lib/format'
 import type { Role } from '@/lib/types'
 
 const line = {
@@ -100,7 +103,12 @@ const ROLES: {
 
 export default function Landing() {
   const navigate = useNavigate()
+  const { session, profile, loading } = useAuth()
   const [leaving, setLeaving] = useState<string | null>(null)
+
+  // Already signed in (for example straight back from Google): no second sign-in, go to the dashboard.
+  if (loading) return <Spinner label="Checking your account" />
+  if (session && profile) return <Navigate to={ROLE_HOME[profile.role]} replace />
 
   function go(href: string, key: string) {
     if (leaving) return

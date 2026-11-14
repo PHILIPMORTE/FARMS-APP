@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
@@ -61,11 +61,69 @@ const NAV: Record<Role, NavItem[]> = {
   ],
 }
 
-export function AppShell({ role }: { role: Role }) {
-  const [badges, setBadges] = useState<Record<string, number>>({})
+type SeenMap = Record<string, number>
 
-  const badgeCount = (it: { badge?: string }) =>
-    it.badge ? (badges[it.badge] ?? 0) : 0
+/** What this person has already looked at, kept on this device, one entry per badge. */
+function readSeen(storageKey: string): SeenMap {
+  try {
+    const raw = window.localStorage.getItem(storageKey)
+    const parsed = raw ? JSON.parse(raw) : {}
+    return parsed && typeof parsed === 'object' ? (parsed as SeenMap) : {}
+  } catch {
+    return {}
+  }
+}
+
+function writeSeen(storageKey: string, map: SeenMap) {
+  try {
+    window.localStorage.setItem(storageKey, JSON.stringify(map))
+  } catch {
+    /* private window or blocked storage: the badge just comes back next visit */
+  }
+}
+
+export function AppShell({ role }: { role: Role }) {
+  const { profile, signOut } = useAuth()
+  const location = useLocation()
+  const [badges, setBadges] = useState<Record<string, number>>({})
+  const [seenState, setSeenState] = useState<{ key: string | null; map: SeenMap }>({
+    key: null,
+    map: {},
+  })
+  const seenKey = profile ? `farms:nav-seen:${profile.id}` : null
+
+  const isOnPage = (it: NavItem) =>
+    location.pathname === it.to || location.pathname.startsWith(`${it.to}/`)
+
+  /**
+   * The red number counts things that are new since the person last opened that page.
+   * Opening the page clears it; it comes back only when something new arrives.
+   */
+  const badgeCount = (it: NavItem) => {
+    if (!it.badge || isOnPage(it) || seenState.key !== seenKey) return 0
+    const total = badges[it.badge] ?? 0
+    return Math.max(0, total - Math.min(seenState.map[it.badge] ?? 0, total))
+  }
+
+  useEffect(() => {
+    if (!seenKey) return
+    const map = readSeen(seenKey)
+    let changed = false
+    for (const it of NAV[role]) {
+      if (!it.badge || !(it.badge in badges)) continue
+      const total = badges[it.badge] ?? 0
+      // on the page: everything is seen. Elsewhere: if things were dealt with, the
+      // seen mark drops with them so the next new one shows up as new.
+      const next = isOnPage(it) ? total : Math.min(map[it.badge] ?? 0, total)
+      if (map[it.badge] !== next) {
+        map[it.badge] = next
+        changed = true
+      }
+    }
+    if (changed) writeSeen(seenKey, map)
+    setSeenState({ key: seenKey, map })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [badges, location.pathname, seenKey, role])
 
   useEffect(() => {
     let alive = true
@@ -89,7 +147,6 @@ export function AppShell({ role }: { role: Role }) {
     }
   }, [role])
 
-  const { profile, signOut } = useAuth()
   const { unread } = useNotifications()
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)

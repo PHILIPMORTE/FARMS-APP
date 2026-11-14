@@ -941,7 +941,6 @@ function AddProductDialog({
             id="prodphoto"
             type="file"
             accept="image/jpeg,image/png,image/webp"
-            capture="environment"
             className="sr-only"
             onChange={(e) => {
               const f = e.target.files?.[0]
@@ -995,6 +994,32 @@ function SukiBadge() {
   )
 }
 
+/** Uploads a product photo to the owner's own folder and gives back its public link. */
+async function uploadProductPhoto(file: File): Promise<{ url: string | null; error: string | null }> {
+  const { data: sess } = await supabase.auth.getSession()
+  const uid = sess.session?.user.id
+  if (!uid) return { url: null, error: 'Please sign in again, then try the photo once more.' }
+  const ext = ({ 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' } as Record<string, string>)[file.type] ?? 'jpg'
+  const path = `${uid}/${Date.now()}.${ext}`
+  const { error } = await supabase.storage
+    .from('product-photos')
+    .upload(path, file, { upsert: true, contentType: file.type })
+  if (error) return { url: null, error: error.message }
+  return { url: supabase.storage.from('product-photos').getPublicUrl(path).data.publicUrl, error: null }
+}
+
+/** Best effort: tidy away a photo that no listing uses any more. Never blocks anything. */
+async function discardProductPhoto(url: string | null | undefined) {
+  const marker = '/product-photos/'
+  const at = url ? url.indexOf(marker) : -1
+  if (!url || at < 0) return
+  try {
+    await supabase.storage.from('product-photos').remove([decodeURIComponent(url.slice(at + marker.length).split('?')[0])])
+  } catch {
+    /* an old file left behind costs nothing */
+  }
+}
+
 function EditStockDialog({
   product,
   onClose,
@@ -1013,11 +1038,28 @@ function EditStockDialog({
   const [payCash, setPayCash] = useState(true)
   const [payGcash, setPayGcash] = useState(false)
   const [payErrors, setPayErrors] = useState<{ number?: string | null; name?: string | null }>({})
+  const [photo, setPhoto] = useState<File | null>(null)
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null)
+  const [dropPhoto, setDropPhoto] = useState(false)
+  const [uploading, setUploading] = useState(false)
   const gcash = useGcashDetails(!!product)
+
+  useEffect(() => {
+    if (!photo) {
+      setPhotoPreview(null)
+      return
+    }
+    const url = URL.createObjectURL(photo)
+    setPhotoPreview(url)
+    return () => URL.revokeObjectURL(url)
+  }, [photo])
 
   useEffect(() => {
     if (product) {
       setQty(String(product.quantity))
+      setNewPrice(String(product.price))
+      setPhoto(null)
+      setDropPhoto(false)
       setReason('')
       setError(null)
       setConfirming(false)
@@ -1058,6 +1100,21 @@ function EditStockDialog({
     }
 
     setBusy(true)
+
+    // The photo goes up first, so a failed upload stops here with nothing half-saved.
+    let newPhotoUrl: string | null = null
+    if (photo) {
+      setUploading(true)
+      const up = await uploadProductPhoto(photo)
+      setUploading(false)
+      if (up.error || !up.url) {
+        setBusy(false)
+        toast.error(`Photo upload failed: ${up.error ?? 'try again'}`)
+        return
+      }
+      newPhotoUrl = up.url
+    }
+
     if (payGcash) {
       const { error: gErr } = await supabase.rpc('save_gcash_details', {
         p_number: gcash.number,
@@ -1087,13 +1144,36 @@ function EditStockDialog({
       p_new_price: Number(newPrice),
       p_reason: reason.trim() || (diff > 0 ? 'Restocked' : 'Stock corrected'),
     })
-    setBusy(false)
 
     if (rpcError) {
+      setBusy(false)
       toast.error(friendlyError(rpcError))
+      if (newPhotoUrl) void discardProductPhoto(newPhotoUrl)
       return
     }
-    toast.success('Listing updated — buyers see this immediately')
+
+    // Photo: a new one replaces the old; "Remove photo" clears it.
+    const photoChanged = newPhotoUrl !== null || dropPhoto
+    let photoFailed = false
+    if (photoChanged) {
+      const { error: phErr } = await supabase
+        .from('products')
+        .update({ photo_url: newPhotoUrl })
+        .eq('id', product!.id)
+      if (phErr) {
+        photoFailed = true
+        if (newPhotoUrl) void discardProductPhoto(newPhotoUrl)
+      } else {
+        void discardProductPhoto(product!.photo_url)
+      }
+    }
+    setBusy(false)
+
+    if (photoFailed) {
+      toast.warning('The stock was saved, but the photo could not be saved. Open Edit stock to try the photo again.')
+    } else {
+      toast.success('Listing updated — buyers see this immediately')
+    }
     onSaved()
   }
 
@@ -1117,7 +1197,7 @@ function EditStockDialog({
             onClick={save}
             disabled={busy || next === null}
           >
-            {busy ? 'Saving…' : confirming ? 'Yes, save this change' : 'Save changes'}
+            {uploading ? 'Uploading photo…' : busy ? 'Saving…' : confirming ? 'Yes, save this change' : 'Save changes'}
           </button>
         </>
       }
@@ -1152,6 +1232,90 @@ function EditStockDialog({
           }
           onChange={(e) => setNewPrice(e.target.value)}
         />
+
+        <div>
+          <label className="label" htmlFor="editphoto">
+            Product photo
+          </label>
+          {photoPreview || (product.photo_url && !dropPhoto) ? (
+            <div className="overflow-hidden rounded-xl border border-soil-200">
+              <img
+                src={photoPreview ?? product.photo_url ?? ''}
+                alt={product.variety}
+                className="max-h-48 w-full bg-soil-50 object-contain"
+              />
+              <div className="flex items-center justify-between gap-3 border-t border-soil-200 px-3 py-2">
+                <label
+                  htmlFor="editphoto"
+                  className="cursor-pointer text-[13px] font-semibold text-brand-700 hover:underline"
+                >
+                  {photoPreview ? 'Pick a different photo' : 'Change photo'}
+                </label>
+                {photoPreview ? (
+                  <button
+                    type="button"
+                    onClick={() => setPhoto(null)}
+                    className="shrink-0 text-[13px] font-semibold text-soil-600 hover:underline"
+                  >
+                    Undo
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setDropPhoto(true)}
+                    className="shrink-0 text-[13px] font-semibold text-red-600 hover:underline"
+                  >
+                    Remove photo
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <label
+              htmlFor="editphoto"
+              className="flex cursor-pointer flex-col items-center gap-1 rounded-xl border-2 border-dashed
+                         border-soil-200 px-4 py-6 text-center transition hover:bg-soil-50"
+            >
+              <span className="text-2xl" aria-hidden>
+                📷
+              </span>
+              <span className="text-[13px] font-semibold">
+                {dropPhoto ? 'Photo will be removed. Tap to add a new one' : 'Add a photo'}
+              </span>
+              <span className="text-[12px] text-soil-400">
+                {dropPhoto
+                  ? 'Buyers will see a picture of the crop instead.'
+                  : 'No photo yet. Buyers are far more likely to order with one'}
+              </span>
+            </label>
+          )}
+          {dropPhoto && !photoPreview && product.photo_url && (
+            <button
+              type="button"
+              onClick={() => setDropPhoto(false)}
+              className="mt-1.5 text-[12px] font-semibold text-brand-700 hover:underline"
+            >
+              Keep the current photo
+            </button>
+          )}
+          <input
+            id="editphoto"
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="sr-only"
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              e.target.value = ''
+              if (!f) return
+              if (f.size > 5 * 1024 * 1024) {
+                toast.error('That photo is over 5 MB. Try a smaller one.')
+                return
+              }
+              setPhoto(f)
+              setDropPhoto(false)
+            }}
+          />
+        </div>
 
         <div>
           <label className="label">How buyers can pay</label>

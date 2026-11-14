@@ -16,7 +16,6 @@ import {
   KG_PER_SACK,
   peso,
   sacks,
-  plantNoun,
   pieceNoun,
   unitWord,
   sacksLabel,
@@ -1077,17 +1076,7 @@ function AddPlantingDialog({
               </p>
             </div>
 
-            <dl className={`mt-3 grid gap-3 ${inPieces && !isMelon ? 'grid-cols-3' : 'grid-cols-2'}`}>
-              {inPieces && !isMelon && (
-                <div className="rounded-lg bg-white/70 px-3 py-2.5 text-center">
-                  <dt className="text-[11px] font-semibold uppercase tracking-wide text-brand-900/70">
-                    {plantNoun(form.crop)}s
-                  </dt>
-                  <dd className="num text-[19px] font-bold text-brand-900">
-                    {Number(estimate.plants ?? 0).toLocaleString('en-PH')}
-                  </dd>
-                </div>
-              )}
+            <dl className="mt-3 grid grid-cols-2 gap-3">
               <div className="rounded-lg bg-white/70 px-3 py-2.5 text-center">
                 <dt className="text-[11px] font-semibold uppercase tracking-wide text-brand-900/70">
                   {inPieces ? `Target ${pieceNoun(form.crop)}s` : 'Sacks'}
@@ -1109,13 +1098,8 @@ function AddPlantingDialog({
 
             {inPieces && (
               <p className="mt-2 text-[11px] leading-relaxed text-brand-900/60">
-                The target is what this planting should bear when the plants are at their
-                healthiest
-                {isMelon
-                  ? `, at around ${estimate.avg_fruit_kg} kg a fruit.`
-                  : `: about ${estimate.fruits_per_plant} ${pieceNoun(form.crop)}${
-                      Number(estimate.fruits_per_plant) === 1 ? '' : 's'
-                    } on each ${plantNoun(form.crop)}, around ${estimate.avg_fruit_kg} kg each.`}
+                The target is what this planting should bear when the crop is at its healthiest,
+                at around {estimate.avg_fruit_kg} kg {isMelon ? 'a fruit' : `an ${pieceNoun(form.crop)}`}.
               </p>
             )}
 
