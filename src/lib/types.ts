@@ -119,6 +119,7 @@ export interface Schedule {
   field_name: string | null
   field_latitude: number | null
   field_longitude: number | null
+  purok_id?: string | null
   expected_sacks: number
   actual_sacks: number | null
   harvested_at: string | null
@@ -261,6 +262,9 @@ export interface AttendanceRow {
   break_started_at: string | null
   in_distance_m: number | null
   out_distance_m: number | null
+  /** Set when the farmer timed in from inside the job's purok. */
+  in_purok_id?: string | null
+  out_purok_id?: string | null
   source: string
   recorded_by: string | null
   created_at: string

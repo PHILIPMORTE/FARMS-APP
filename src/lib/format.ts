@@ -99,11 +99,18 @@ export function suggestedCrops(monthIndex: number): Crop[] {
   return CROPS.filter((c) => SEASON[c].includes(monthIndex))
 }
 
+/**
+ * Today's date in the Philippines (YYYY-MM-DD), whatever time zone the device is set to.
+ * The database uses the same day (today_ph()), so the app and the server never disagree
+ * about what "today" is, even in the early morning when UTC is still on yesterday.
+ */
 export function todayISO(): string {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
-    d.getDate(),
-  ).padStart(2, '0')}`
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Manila',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date())
 }
 
 export function toISODate(d: Date): string {
@@ -117,9 +124,11 @@ export function daysBetween(a: string, b: string): number {
 }
 
 export function addDays(iso: string, days: number): string {
-  const d = new Date(iso)
-  d.setDate(d.getDate() + days)
-  return toISODate(d)
+  const [y, m, d] = iso.slice(0, 10).split('-').map(Number)
+  const out = new Date(Date.UTC(y, m - 1, d + days))
+  return `${out.getUTCFullYear()}-${String(out.getUTCMonth() + 1).padStart(2, '0')}-${String(
+    out.getUTCDate(),
+  ).padStart(2, '0')}`
 }
 
 export const ROLE_HOME: Record<Role, string> = {
@@ -260,6 +269,7 @@ export function pesoShort(value: number | null | undefined): string {
 export function shortDate(value: string | null | undefined): string {
   if (!value) return '—'
   return new Date(value).toLocaleDateString('en-PH', {
+    timeZone: 'Asia/Manila',
     month: 'short',
     day: 'numeric',
     year: 'numeric',
@@ -301,8 +311,9 @@ export function initials(name: string): string {
   )
 }
 
-export function titleCase(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1)
+export function titleCase(s: string | null | undefined): string {
+  const t = s ?? ''
+  return t.charAt(0).toUpperCase() + t.slice(1)
 }
 
 

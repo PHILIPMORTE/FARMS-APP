@@ -11,6 +11,7 @@ import {
   relativeDate,
   shortDate,
   toISODate,
+  todayISO,
 } from '@/lib/format'
 import { friendlyError } from '@/lib/validation'
 import type { AttendanceRow } from '@/lib/types'
@@ -18,16 +19,20 @@ import type { AttendanceRow } from '@/lib/types'
 function clockTime(iso: string | null): string {
   if (!iso) return '—'
   return new Date(iso).toLocaleTimeString('en-PH', {
+    timeZone: 'Asia/Manila',
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
   })
 }
 
+/** A worker has timed in and not yet out. */
+const isRunning = (r: AttendanceRow) => !!r.time_in && !r.time_out
+
 export default function OwnerAttendance() {
   const { profile, farm } = useAuth()
   const [rows, setRows] = useState<AttendanceRow[] | null>(null)
-  const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7))
+  const [month, setMonth] = useState(() => todayISO().slice(0, 7))
   const [paying, setPaying] = useState<string | null>(null)
   const [workerFilter, setWorkerFilter] = useState('all')
   const [staff, setStaff] = useState<{ id: string; name: string }[]>([])
@@ -95,6 +100,9 @@ export default function OwnerAttendance() {
 
   useEffect(() => {
     load()
+    // New time-ins and time-outs appear without a refresh.
+    const timer = setInterval(load, 30000)
+    return () => clearInterval(timer)
   }, [load])
 
   const tasks = useMemo(
@@ -115,7 +123,8 @@ export default function OwnerAttendance() {
   )
 
   const totals = useMemo(() => {
-    const list = shown
+    // A shift that has not been timed out has no final pay yet.
+    const list = shown.filter((r) => !isRunning(r))
     return {
       hours: list.reduce((s, r) => s + Number(r.hours_worked), 0),
       pay: list.reduce((s, r) => s + Number(r.computed_pay), 0),
@@ -123,7 +132,7 @@ export default function OwnerAttendance() {
         .filter((r) => r.payment_status !== 'paid')
         .reduce((s, r) => s + Number(r.computed_pay), 0),
       absent: list.filter((r) => r.status === 'absent').length,
-      days: list.length,
+      days: shown.length,
     }
   }, [shown])
 
@@ -236,6 +245,7 @@ export default function OwnerAttendance() {
           options={[
             { value: 'all', label: 'All' },
             { value: 'unpaid', label: 'Unpaid only' },
+            { value: 'pending', label: 'Sent, waiting for the worker' },
             { value: 'paid', label: 'Paid only' },
           ]}
         />
@@ -244,7 +254,11 @@ export default function OwnerAttendance() {
       <div className="print-only mb-4">
         <h1 className="text-xl font-bold">{farm?.name ?? 'Farm'} — Daily Work Log</h1>
         <p className="text-[13px] text-soil-600">
-          {new Date(`${month}-01`).toLocaleDateString('en-PH', { month: 'long', year: 'numeric' })}
+          {new Date(`${month}-01`).toLocaleDateString('en-PH', {
+            timeZone: 'Asia/Manila',
+            month: 'long',
+            year: 'numeric',
+          })}
           {' · Standard day: '}
           {hours(farm?.standard_hours ?? 8)} hours
         </p>
@@ -305,10 +319,18 @@ export default function OwnerAttendance() {
                         >
                           Not checked
                         </span>
+                      ) : r.in_purok_id ? (
+                        // The server only accepts a time in from inside the job's purok.
+                        <span
+                          className="chip bg-green-100 text-green-800"
+                          title={`Timed in inside the job's purok, about ${r.in_distance_m} m from its centre`}
+                        >
+                          In purok
+                        </span>
                       ) : (
                         <span
                           className={`chip ${
-                            r.in_distance_m <= 300
+                            r.in_distance_m <= (farm?.clock_radius_m ?? 300)
                               ? 'bg-green-100 text-green-800'
                               : 'bg-amber-100 text-amber-800'
                           }`}
@@ -353,7 +375,7 @@ export default function OwnerAttendance() {
                       {peso(r.daily_wage)}
                     </td>
                     <td className="num px-4 py-2.5 text-right font-bold">
-                      {peso(r.computed_pay)}
+                      {isRunning(r) ? <span className="text-soil-400">—</span> : peso(r.computed_pay)}
                       {r.status === 'half_day' && (
                         <span className="block text-[11px] font-medium text-amber-700">
                           Half day
@@ -361,7 +383,9 @@ export default function OwnerAttendance() {
                       )}
                     </td>
                     <td className="px-4 py-2.5 text-center">
-                      {Number(r.computed_pay) <= 0 ? (
+                      {isRunning(r) ? (
+                        <Badge tone="amber">In progress</Badge>
+                      ) : Number(r.computed_pay) <= 0 ? (
                         <span className="text-[12px] text-soil-400">—</span>
                       ) : r.payment_status === 'paid' ? (
                         <Badge tone="green">Paid</Badge>
@@ -372,7 +396,7 @@ export default function OwnerAttendance() {
                       )}
                     </td>
                     <td className="no-print px-4 py-2.5 text-right">
-                      {Number(r.computed_pay) <= 0 ? null : r.payment_status === 'paid' ? (
+                      {isRunning(r) || Number(r.computed_pay) <= 0 ? null : r.payment_status === 'paid' ? (
                         <span className="text-[12px] text-soil-400">
                           Confirmed {r.payment_confirmed_at ? relativeDate(r.payment_confirmed_at) : ''}
                         </span>

@@ -311,7 +311,7 @@ export function OrderPaymentDialog({
     setBusy(true)
     const { error: e } = await supabase.rpc('submit_gcash_reference', {
       p_order_id: orderId,
-      p_reference: ref,
+      p_reference: ref.replace(/\s/g, ''),
     })
     setBusy(false)
     if (e) {

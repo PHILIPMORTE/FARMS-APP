@@ -61,8 +61,12 @@ export function AccountHeader({ subtitle, extra }: { subtitle?: string; extra?: 
   async function removePhoto() {
     if (!profile) return
     setBusy(true)
-    await supabase.from('profiles').update({ avatar_url: null }).eq('id', profile.id)
+    const { error } = await supabase.from('profiles').update({ avatar_url: null }).eq('id', profile.id)
     setBusy(false)
+    if (error) {
+      toast.error(error.message)
+      return
+    }
     setPreview(null)
     toast.success('Profile picture removed')
     await refresh()

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
-import { PurokFromPin, PurokSelect } from '@/components/PurokSelect'
+import { PurokSelect, usePuroks } from '@/components/PurokSelect'
 import { useAuth } from '@/context/AuthContext'
 import { Dialog, Field, PesoInput, SackInput, Select, Spinner, TextArea, ViewToggle } from '@/components/ui'
 import {
@@ -13,6 +13,7 @@ import {
   VARIETIES,
   addDays,
   daysBetween,
+  KG_PER_SACK,
   peso,
   sacks,
   plantNoun,
@@ -48,9 +49,12 @@ const EXPENSE_CATEGORIES = [
   'Other',
 ]
 
+/** Today in the Philippines, as a date the month grids can start from (noon, so no clock shift can move the day). */
+const manilaToday = () => new Date(`${todayISO()}T12:00:00`)
+
 export default function OwnerCalendar() {
   const { farm } = useAuth()
-  const [cursor, setCursor] = useState(() => new Date())
+  const [cursor, setCursor] = useState(manilaToday)
   const [rows, setRows] = useState<Schedule[] | null>(null)
   const [view, setView] = useState<'calendar' | 'table'>('calendar')
   const [cropFilter, setCropFilter] = useState('all')
@@ -202,6 +206,7 @@ export default function OwnerCalendar() {
         date={adding}
         onClose={() => setAdding(null)}
         farmId={farm?.id ?? ''}
+        defaultPurokId={farm?.purok_id ?? ''}
         existing={rows}
         onSaved={() => {
           setAdding(null)
@@ -259,8 +264,6 @@ function CalendarView({
     ...Array.from({ length: days }, (_, i) => i + 1),
   ]
 
-  const plantedCrops = (key: string): Crop[] =>
-    rows.filter((r) => r.planting_date === key).map((r) => r.crop)
   return (
     <div className="space-y-4">
       <div className="grid gap-3 lg:grid-cols-2">
@@ -549,7 +552,7 @@ function TableView({
   onOpen: (s: Schedule) => void
   onHarvest: (s: Schedule) => void
 }) {
-  const [anchor, setAnchor] = useState(() => new Date())
+  const [anchor, setAnchor] = useState(manilaToday)
 
   const year = anchor.getFullYear()
   const month = anchor.getMonth()
@@ -560,10 +563,6 @@ function TableView({
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
   const todayIso = todayISO()
-
-  function plantedCrops(key: string): Crop[] {
-    return rows.filter((r) => r.planting_date === key).map((r) => r.crop)
-  }
 
   function eventsOn(d: Date) {
     const key = iso(d)
@@ -580,7 +579,7 @@ function TableView({
       <div className="flex items-center gap-2 border-b border-soil-200 px-4 py-3">
         <button
           className="btn-sm border border-soil-200 hover:bg-soil-100"
-          onClick={() => setAnchor(new Date())}
+          onClick={() => setAnchor(manilaToday())}
         >
           Today
         </button>
@@ -745,12 +744,15 @@ function AddPlantingDialog({
   date,
   onClose,
   farmId,
+  defaultPurokId,
   existing,
   onSaved,
 }: {
   date: string | null
   onClose(): void
   farmId: string
+  /** The purok saved on the farm's account, so the owner does not pick it every time. */
+  defaultPurokId: string
   existing: Schedule[]
   onSaved(): void
 }) {
@@ -773,7 +775,7 @@ function AddPlantingDialog({
       customVariety: '',
       seed_kg: '',
       note: '',
-            purok_id: '',
+      purok_id: defaultPurokId,
     })
     setErrors({})
   }, [date])
@@ -855,13 +857,12 @@ function AddPlantingDialog({
       chosenVariety !== '',
   )
 
-  const monthIndex = new Date(plantingDate).getMonth()
+  const monthIndex = Number(plantingDate.slice(5, 7)) - 1
   const offSeason = !SEASON[form.crop].includes(monthIndex)
-  const monthName = new Date(plantingDate).toLocaleDateString('en-PH', { month: 'long' })
+  const monthName = new Date(2000, monthIndex, 1).toLocaleDateString('en-PH', { month: 'long' })
   const goodMonths = SEASON[form.crop]
     .map((m) => new Date(2000, m, 1).toLocaleDateString('en-PH', { month: 'short' }))
     .join(', ')
-  const month = plantingDate.slice(0, 7)
 
   const sameDay = existing.filter(
     (r) => r.status !== 'cancelled' && r.planting_date === plantingDate,
@@ -894,6 +895,7 @@ function AddPlantingDialog({
       p_planting_date: plantingDate,
       p_seed_kg: seedKg,
       p_note: form.note.trim(),
+      p_purok_id: form.purok_id,
     })
     setBusy(false)
 
@@ -920,7 +922,7 @@ function AddPlantingDialog({
       title={date && date > today ? 'Schedule a planting' : 'Plan a planting'}
       description={
         date
-          ? new Date(date).toLocaleDateString('en-PH', {
+          ? new Date(`${date}T12:00:00`).toLocaleDateString('en-PH', {
               weekday: 'long',
               day: 'numeric',
               month: 'long',
@@ -1169,6 +1171,7 @@ function DetailDialog({
   const [spent, setSpent] = useState(0)
   const [busy, setBusy] = useState(false)
   const [modelKg, setModelKg] = useState<number | null>(null)
+  const puroks = usePuroks()
 
   useEffect(() => {
     setModelKg(null)
@@ -1199,10 +1202,16 @@ function DetailDialog({
   const c = CROP_COLOR[schedule.crop]
 
   async function doHarvest() {
+    if (!/^\d+$/.test(actual.trim())) {
+      toast.error(
+        `Enter how many ${unitWord(schedule!.crop, 2)} you harvested (type 0 if you got none).`,
+      )
+      return
+    }
     setBusy(true)
     const { error } = await supabase.rpc('harvest_schedule', {
       p_schedule_id: schedule!.id,
-      p_actual_sacks: parseInt(actual || '0', 10),
+      p_actual_sacks: parseInt(actual.trim(), 10),
       p_price: null,
     })
     setBusy(false)
@@ -1295,7 +1304,10 @@ function DetailDialog({
                     : '—'
                 }
               />
-              <Row label="Purok" value={schedule.field_name || '—'} />
+              <Row
+                label="Purok"
+                value={puroks.find((p) => p.id === schedule.purok_id)?.name ?? schedule.field_name ?? '—'}
+              />
               <Row label="Seed used" value={seedLabel(Number(schedule.seed_kg), schedule.crop)} />
               <Row
                 label={
@@ -1312,7 +1324,7 @@ function DetailDialog({
                     ? modelKg == null
                       ? '…'
                       : `${Math.round(modelKg).toLocaleString('en-PH')} kg`
-                    : `${schedule.expected_sacks * 25} kg`
+                    : `${(schedule.expected_sacks * KG_PER_SACK).toLocaleString('en-PH')} kg`
                 }
               />
               {schedule.actual_sacks != null && (
@@ -1455,22 +1467,6 @@ function DetailDialog({
             label="Why is it being cancelled?"
             max={200}
             placeholder="Optional"
-            value={cancelReason}
-            onChange={(e) => setCancelReason(e.target.value)}
-          />
-        </div>
-      )}
-
-      {mode === 'cancel' && (
-        <div className="space-y-4">
-          <p className="text-[14px] leading-relaxed text-soil-800">
-            The planting is closed and comes off the calendar. Any costs you already recorded stay
-            in Finance, so the books still show what was spent.
-          </p>
-          <TextArea
-            label="Reason (optional)"
-            max={200}
-            placeholder="e.g. planted too early, field flooded"
             value={cancelReason}
             onChange={(e) => setCancelReason(e.target.value)}
           />

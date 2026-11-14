@@ -59,6 +59,23 @@ export default function OwnerMarket() {
   const [viewingBuyer, setViewingBuyer] = useState<Profile | null>(null)
   const [sukiCounts, setSukiCounts] = useState<Record<string, number>>({})
   const [harvests, setHarvests] = useState<Schedule[]>([])
+  const [removing, setRemoving] = useState<Product | null>(null)
+  const [removeBusy, setRemoveBusy] = useState(false)
+
+  async function removeListing() {
+    if (!removing) return
+    setRemoveBusy(true)
+    const { error } = await supabase.from('products').delete().eq('id', removing.id)
+    setRemoveBusy(false)
+    if (error) {
+      // For example a listing that already has orders: the database refuses, and says why.
+      toast.error(friendlyError(error))
+      return
+    }
+    toast.success('Listing removed')
+    setRemoving(null)
+    load()
+  }
 
   async function load() {
     if (!farm) return
@@ -265,11 +282,7 @@ export default function OwnerMarket() {
                       Edit stock
                     </button>
                     <button
-                      onClick={async () => {
-                        await supabase.from('products').delete().eq('id', p.id)
-                        toast.success('Listing removed')
-                        load()
-                      }}
+                      onClick={() => setRemoving(p)}
                       className="btn-sm border border-soil-200 text-red-600 hover:bg-red-50"
                     >
                       Remove
@@ -450,6 +463,28 @@ export default function OwnerMarket() {
           <BuyerContactCard buyer={viewingBuyer} />
           {viewingBuyer && <BuyerPurchases buyerId={viewingBuyer.id} />}
         </div>
+      </Dialog>
+
+      <Dialog
+        open={removing !== null}
+        onClose={() => setRemoving(null)}
+        title="Remove this listing?"
+        description={removing?.variety}
+        footer={
+          <>
+            <button className="btn-ghost" onClick={() => setRemoving(null)}>
+              Keep it
+            </button>
+            <button className="btn-danger" onClick={removeListing} disabled={removeBusy}>
+              {removeBusy ? 'Removing…' : 'Remove listing'}
+            </button>
+          </>
+        }
+      >
+        <p className="text-[14px] leading-relaxed text-soil-800">
+          Buyers will no longer see it. A listing that already has orders cannot be removed; set its
+          stock to 0 instead.
+        </p>
       </Dialog>
 
       <EditStockDialog
@@ -663,7 +698,11 @@ function AddProductDialog({
       return
     }
     if (photoUrl && (data as any)?.id) {
-      await supabase.from('products').update({ photo_url: photoUrl }).eq('id', (data as any).id)
+      const { error: pErr } = await supabase
+        .from('products')
+        .update({ photo_url: photoUrl })
+        .eq('id', (data as any).id)
+      if (pErr) toast.warning('The listing was saved, but its photo could not be attached.')
     }
 
     toast.success(

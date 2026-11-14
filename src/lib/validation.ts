@@ -29,6 +29,15 @@ export function validatePassword(input: string): string | null {
   return null
 }
 
+/** The email is optional, but when it is given it must be one a message can reach. */
+export function validateEmail(input: string): string | null {
+  const v = input.trim()
+  if (!v) return null
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v)
+    ? null
+    : 'Enter a valid email address, like name@example.com.'
+}
+
 export function validateName(input: string): string | null {
   if (!input.trim()) return 'Enter your full name.'
   if (input.trim().length < 2) return 'Enter your full name.'

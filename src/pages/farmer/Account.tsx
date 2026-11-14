@@ -8,6 +8,7 @@ import { titleCase } from '@/lib/format'
 import {
   friendlyError,
   normalisePhone,
+  validateEmail,
   validateName,
   validatePhone,
   validateWholeNumber,
@@ -86,6 +87,7 @@ export default function FarmerAccount() {
     const next = {
       name: validateName(form.name),
       phone: validatePhone(form.phone),
+      email: validateEmail(form.email ?? ''),
       experience_years: validateWholeNumber(form.experience_years, 0, 'number of years'),
     }
     setErrors(next)
@@ -192,9 +194,10 @@ export default function FarmerAccount() {
             <Field
               label="Email"
               type="email"
-              placeholder="Needed for password resets"
+              placeholder="For password resets and email notices"
               className="sm:col-span-2"
               value={form.email ?? ''}
+              error={errors.email}
               onChange={(e) => set('email', e.target.value)}
             />
             <Field label="Province" value={form.province ?? ''} onChange={(e) => set('province', e.target.value)} />

@@ -613,7 +613,11 @@ function PostJobDialog({
       return
     }
     toast.success('Job posted')
-    setForm((f) => ({ ...f, title: '', description: '', wage: '', slots: '' }))
+    // Start the next post clean. In particular the geofence choice goes back to its
+    // default (on), so one job posted without it never carries over to the next.
+    setForm((f) => ({ ...f, title: '', description: '', wage: '', slots: '', purok_id: '', end_date: '' }))
+    setGeofenced(true)
+    setErrors({})
     onSaved()
   }
 

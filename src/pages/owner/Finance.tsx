@@ -181,7 +181,11 @@ function TxnDialog({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
-    const next = { amount: validateAmount(form.amount, 'amount') }
+    const next = {
+      amount:
+        validateAmount(form.amount, 'amount') ??
+        (Number(form.amount) > 0 ? null : 'Enter an amount greater than zero.'),
+    }
     setErrors(next)
     if (next.amount) return
 

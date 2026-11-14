@@ -14,6 +14,7 @@ import type { AttendanceRow } from '@/lib/types'
 function clock(iso: string | null): string {
   if (!iso) return '—'
   return new Date(iso).toLocaleTimeString('en-PH', {
+    timeZone: 'Asia/Manila',
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
@@ -66,7 +67,8 @@ export default function FarmerHistory() {
   }, [month, reloadKey, profile?.id])
 
   const totals = useMemo(() => {
-    const list = rows ?? []
+    // A shift that has not been timed out has no final pay yet.
+    const list = (rows ?? []).filter((r) => !(r.time_in && !r.time_out))
     return {
       days: list.length,
       hours: list.reduce((s, r) => s + Number(r.hours_worked), 0),

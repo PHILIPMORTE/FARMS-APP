@@ -16,7 +16,6 @@ interface AuthState {
   registerWithPhone(role: Role, name: string, phone: string, password: string): Promise<void>
   signInWithGoogle(role: Role): Promise<void>
   completeGoogleProfile(role: Role, name: string, phone: string): Promise<void>
-  sendPasswordReset(phone: string): Promise<void>
   refresh(): Promise<void>
   signOut(): Promise<void>
 }
@@ -357,30 +356,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  async function sendPasswordReset(phoneInput: string) {
-    const phone = normalisePhone(phoneInput)
-    if (!phone) throw new AuthError('Enter your mobile number first.')
-
-    const { data } = await supabase
-      .from('profiles')
-      .select('email')
-      .eq('phone', phone)
-      .not('email', 'is', null)
-      .limit(1)
-      .maybeSingle()
-
-    if (!data?.email) {
-      throw new AuthError(
-        'No email is attached to this number, so a reset link cannot be sent. Ask your farm administrator to reset it.',
-      )
-    }
-
-    const { error } = await supabase.auth.resetPasswordForEmail(data.email, {
-      redirectTo: `${window.location.origin}/auth/reset`,
-    })
-    if (error) throw new AuthError(error.message)
-  }
-
   async function signOut() {
     await supabase.auth.signOut()
     setActiveRole(null)
@@ -399,7 +374,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       registerWithPhone,
       signInWithGoogle,
       completeGoogleProfile,
-      sendPasswordReset,
       refresh,
       signOut,
     }),

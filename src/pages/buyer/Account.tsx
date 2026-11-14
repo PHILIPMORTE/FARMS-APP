@@ -7,6 +7,7 @@ import { Field, SectionHeading, Spinner } from '@/components/ui'
 import {
   friendlyError,
   normalisePhone,
+  validateEmail,
   validateName,
   validatePhone,
   validateRequired,
@@ -43,6 +44,7 @@ export default function BuyerAccount() {
     const next = {
       name: validateName(form.name),
       phone: validatePhone(form.phone),
+      email: validateEmail(form.email ?? ''),
       address: validateRequired(form.address, 'Delivery address'),
       city: validateRequired(form.city, 'City or municipality'),
     }
@@ -110,9 +112,10 @@ export default function BuyerAccount() {
             <Field
               label="Email"
               type="email"
-              placeholder="Needed for password resets"
+              placeholder="For password resets and email notices"
               className="sm:col-span-2"
               value={form.email ?? ''}
+              error={errors.email}
               onChange={(e) => set('email', e.target.value)}
             />
           </div>

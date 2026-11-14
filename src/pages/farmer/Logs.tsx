@@ -9,11 +9,12 @@ import {
   isPhone,
   metresBetween,
   usesLocationCheck,
+  type Fix,
   type Verdict,
 } from '@/lib/geofence'
 import { useAuth } from '@/context/AuthContext'
 import { Empty, SectionHeading, Spinner, Stat } from '@/components/ui'
-import { hours, todayISO, peso , refreshBadges } from '@/lib/format'
+import { hours, todayISO, peso, refreshBadges, shortDate } from '@/lib/format'
 import { friendlyError } from '@/lib/validation'
 import type { AttendanceRow } from '@/lib/types'
 
@@ -26,23 +27,6 @@ interface ActiveJob {
   start_time: string
   end_time: string
   clocked: boolean
-}
-
-function toMinutes(t: string | null | undefined): number | null {
-  if (!t) return null
-  const [h, m] = t.split(':').map(Number)
-  if (Number.isNaN(h)) return null
-  return h * 60 + (m || 0)
-}
-
-function clockLabel(t: string | null | undefined): string {
-  const mins = toMinutes(t)
-  if (mins === null) return ''
-  const h = Math.floor(mins / 60)
-  const m = mins % 60
-  const period = h >= 12 ? 'PM' : 'AM'
-  const hour = h % 12 === 0 ? 12 : h % 12
-  return `${hour}:${String(m).padStart(2, '0')} ${period}`
 }
 
 interface JobPlace {
@@ -76,6 +60,7 @@ interface OpenShift {
 function clock(iso: string | null): string {
   if (!iso) return '—'
   return new Date(iso).toLocaleTimeString('en-PH', {
+    timeZone: 'Asia/Manila',
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
@@ -165,19 +150,28 @@ export default function FarmerLogs() {
     return () => navigator.geolocation.clearWatch(watch)
   }, [needsLocation])
 
-  function getPosition(): Promise<GeolocationPosition> {
+  /**
+   * The position to send. The phone is already reporting where it is (the watch above, which is
+   * what the screen judged), so that same reading is used. Asking the GPS again with a forced
+   * fresh fix can stall while the watch is running, so that is done only when there is no
+   * reading yet.
+   */
+  function getFix(): Promise<Fix> {
+    if (here) return Promise.resolve({ lat: here.lat, lng: here.lng, acc: here.acc })
     return new Promise((resolve, reject) => {
       if (!navigator.geolocation) {
         reject(new Error('This device cannot share its location.'))
         return
       }
-      navigator.geolocation.getCurrentPosition(resolve, () =>
-        reject(
-          new Error(
-            'Location is off. Turn it on and allow this site, so the farm can confirm you are on site.',
+      navigator.geolocation.getCurrentPosition(
+        (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy }),
+        () =>
+          reject(
+            new Error(
+              'Location is off. Turn it on and allow this site, so the farm can confirm you are on site.',
+            ),
           ),
-        ),
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 },
       )
     })
   }
@@ -190,10 +184,10 @@ export default function FarmerLogs() {
 
     const checked = usesLocationCheck(places.find((p) => p.job_id === jobId))
     setBusy(true)
-    let pos: GeolocationPosition | null = null
+    let pos: Fix | null = null
     if (checked) {
       try {
-        pos = await getPosition()
+        pos = await getFix()
       } catch (err) {
         setBusy(false)
         toast.error(String((err as Error).message))
@@ -201,16 +195,14 @@ export default function FarmerLogs() {
       }
     }
 
+    // All five values are always sent (null when the job is not geofenced), so the call
+    // can only match the current function and never an older copy with fewer arguments.
     const { error } = await supabase.rpc('farmer_time_in', {
       p_job_id: jobId,
-      ...(pos
-        ? {
-            p_latitude: pos.coords.latitude,
-            p_longitude: pos.coords.longitude,
-            p_accuracy: pos.coords.accuracy,
-            p_device: isPhone() ? 'mobile' : 'desktop',
-          }
-        : {}),
+      p_latitude: pos ? pos.lat : null,
+      p_longitude: pos ? pos.lng : null,
+      p_accuracy: pos ? pos.acc : null,
+      p_device: pos ? (isPhone() ? 'mobile' : 'desktop') : null,
     })
     setBusy(false)
     if (error) {
@@ -246,24 +238,30 @@ export default function FarmerLogs() {
   }
 
   async function timeOut() {
-    const checked = usesLocationCheck(places.find((p) => p.job_id === shift?.job_id))
+    const place = places.find((p) => p.job_id === shift?.job_id)
+    // When the job is no longer on the list (for example the farm ended the hire during the
+    // shift) the app cannot tell whether it is geofenced, so it offers the position if it can
+    // and lets the server decide. A shift can always be closed.
+    const checked = place ? usesLocationCheck(place) : true
     setBusy(true)
-    let pos: GeolocationPosition | null = null
+    let pos: Fix | null = null
     if (checked) {
       try {
-        pos = await getPosition()
+        pos = await getFix()
       } catch (err) {
-        setBusy(false)
-        toast.error(String((err as Error).message))
-        return
+        if (place) {
+          setBusy(false)
+          toast.error(String((err as Error).message))
+          return
+        }
       }
     }
 
     const { error } = await supabase.rpc('farmer_time_out', pos
       ? {
-          p_latitude: pos.coords.latitude,
-          p_longitude: pos.coords.longitude,
-          p_accuracy: pos.coords.accuracy,
+          p_latitude: pos.lat,
+          p_longitude: pos.lng,
+          p_accuracy: pos.acc,
           p_device: isPhone() ? 'mobile' : 'desktop',
         }
       : {})
@@ -286,8 +284,6 @@ export default function FarmerLogs() {
     : 0
   const totalBreak = Math.floor((shift?.break_minutes ?? 0) + liveBreak)
   const workedMinutes = totalBreak
-
-  const selected = jobs.find((j) => j.job_id === jobId) ?? null
 
   const placeFor = (jid: string | null | undefined) =>
     places.find((p) => p.job_id === jid) ?? null
@@ -418,6 +414,7 @@ export default function FarmerLogs() {
       <div className="card p-6 text-center">
         <p className="text-[12px] font-semibold uppercase tracking-wide text-soil-400">
           {new Date().toLocaleDateString('en-PH', {
+            timeZone: 'Asia/Manila',
             weekday: 'long',
             day: 'numeric',
             month: 'long',
@@ -441,7 +438,13 @@ export default function FarmerLogs() {
             )}
             <p className="mt-1.5 text-[13px] text-soil-600">
               Timed in at <span className="num font-semibold">{clock(shift.time_in)}</span>
+              {shift.work_date !== todayISO() && <> on {shortDate(shift.work_date)}</>}
             </p>
+            {shift.work_date !== todayISO() && (
+              <p className="mx-auto mt-2 max-w-sm rounded-lg bg-amber-50 px-3 py-2 text-[12px] leading-relaxed text-amber-900">
+                This shift was never closed. Tap Time Out to finish it before you start a new one.
+              </p>
+            )}
             <p className="mt-0.5 text-[13px] text-soil-400">
               {shift.job ?? 'Work'} · {shift.farm}
             </p>
@@ -485,15 +488,18 @@ export default function FarmerLogs() {
           <>
             <p className="num mt-3 text-[42px] font-bold leading-none">
               {now.toLocaleTimeString('en-PH', {
+                timeZone: 'Asia/Manila',
                 hour: 'numeric',
                 minute: '2-digit',
                 hour12: true,
               })}
             </p>
             <p className="mt-1.5 text-[13px] text-soil-600">
-              {finishedToday.length > 0
+              {jobs.length > 0 && jobs.every((j) => j.clocked)
                 ? 'You have finished your shift for today.'
-                : 'You are not timed in yet.'}
+                : finishedToday.length > 0
+                  ? 'Your earlier shift today is done. You can start another job.'
+                  : 'You are not timed in yet.'}
             </p>
 
             {jobs.length === 0 ? (

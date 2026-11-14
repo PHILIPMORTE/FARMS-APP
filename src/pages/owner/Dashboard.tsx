@@ -26,7 +26,10 @@ export default function OwnerDashboard() {
     let alive = true
 
     ;(async () => {
-      supabase.rpc('notify_ready_harvests')
+      // A query only runs once something waits on it, so this needs the .then.
+      supabase.rpc('notify_ready_harvests').then(({ error }) => {
+        if (error) console.warn('Growth notices skipped:', error.message)
+      })
 
       supabase.rpc('generate_harvest_reminders').then(({ error }) => {
         if (error) console.warn('Harvest reminders skipped:', error.message)
@@ -34,7 +37,7 @@ export default function OwnerDashboard() {
 
       const [txns, scheds, inv, jobs] = await Promise.all([
         supabase.from('transactions').select('amount,type').eq('farm_id', farm.id).eq('type', 'income'),
-        supabase.from('schedules').select('id').eq('farm_id', farm.id),
+        supabase.from('schedules').select('id,status').eq('farm_id', farm.id),
         supabase.from('inventory').select('*').eq('farm_id', farm.id).order('added_at', { ascending: false }),
         supabase.from('job_posts').select('id,status').eq('owner_id', profile.id),
       ])
@@ -58,7 +61,9 @@ export default function OwnerDashboard() {
       if (!alive) return
       setData({
         revenue: (txns.data ?? []).reduce((s, t) => s + Number(t.amount), 0),
-        schedules: scheds.data?.length ?? 0,
+        schedules: (scheds.data ?? []).filter((r: any) =>
+          ['planned', 'planted', 'growing'].includes(r.status),
+        ).length,
         stock,
         recent: ((inv.data ?? []) as InventoryItem[]).slice(0, 40),
         openJobs: (jobs.data ?? []).filter((j) => j.status === 'open').length,
@@ -81,7 +86,7 @@ export default function OwnerDashboard() {
     <div className="space-y-7">
       <div>
         <h1 className="text-[22px] font-bold">
-          {greeting()}, {profile?.name.split(' ')[0]}
+          {greeting()}, {(profile?.name ?? '').split(' ')[0]}
         </h1>
         <p className="mt-0.5 text-[13px] text-soil-600">{farm?.name}</p>
       </div>
@@ -93,14 +98,7 @@ export default function OwnerDashboard() {
         <Stat label="Corn stock" value={sacks(data.stock.corn)} sub={weightNote(data.stock.corn, 'corn')} />
       </div>
 
-      <div className="card flex items-center justify-between gap-4 px-5 py-4">
-        <div>
-          <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-soil-400">Today</p>
-          <p className="num mt-0.5 text-2xl font-bold">28°C</p>
-          <p className="text-sm text-soil-600">Sunny — good drying weather</p>
-        </div>
-        <span className="text-4xl" aria-hidden>☀️</span>
-      </div>
+      <Weather lat={farm?.latitude ?? null} lng={farm?.longitude ?? null} />
 
       <section>
         <SectionHeading
@@ -204,8 +202,72 @@ export default function OwnerDashboard() {
 }
 
 function greeting() {
-  const h = new Date().getHours()
+  const h = Number(
+    new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Manila', hour: 'numeric', hour12: false }).format(
+      new Date(),
+    ),
+  ) % 24
   if (h < 11) return 'Magandang umaga'
   if (h < 18) return 'Magandang hapon'
   return 'Magandang gabi'
+}
+
+/** Weather code (WMO) to a short description and symbol. */
+function describeWeather(code: number): { text: string; icon: string } {
+  if (code === 0) return { text: 'Clear sky', icon: '☀️' }
+  if (code === 1 || code === 2) return { text: 'Partly cloudy', icon: '⛅' }
+  if (code === 3) return { text: 'Overcast', icon: '☁️' }
+  if (code === 45 || code === 48) return { text: 'Foggy', icon: '🌫️' }
+  if (code >= 51 && code <= 57) return { text: 'Light drizzle', icon: '🌦️' }
+  if ((code >= 61 && code <= 67) || (code >= 80 && code <= 82)) return { text: 'Rain', icon: '🌧️' }
+  if (code >= 95) return { text: 'Thunderstorm', icon: '⛈️' }
+  return { text: 'Cloudy', icon: '☁️' }
+}
+
+/**
+ * Today's weather at the farm, from Open-Meteo (free, no key). The card is simply left out
+ * when the weather cannot be fetched, so it never shows made-up figures.
+ */
+function Weather({ lat, lng }: { lat: number | null; lng: number | null }) {
+  const [w, setW] = useState<{ temp: number; code: number; rain: number | null } | null>(null)
+  const la = lat ?? 9.3764 // Pagatban, Dumaguete, when the farm has no pin
+  const lo = lng ?? 122.741
+
+  useEffect(() => {
+    const ctrl = new AbortController()
+    fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${la}&longitude=${lo}` +
+        `&current=temperature_2m,weather_code&daily=precipitation_probability_max` +
+        `&timezone=Asia%2FManila&forecast_days=1`,
+      { signal: ctrl.signal },
+    )
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('weather unavailable'))))
+      .then((j) =>
+        setW({
+          temp: Math.round(j.current.temperature_2m),
+          code: Number(j.current.weather_code),
+          rain: j.daily?.precipitation_probability_max?.[0] ?? null,
+        }),
+      )
+      .catch(() => {})
+    return () => ctrl.abort()
+  }, [la, lo])
+
+  if (!w) return null
+  const d = describeWeather(w.code)
+  return (
+    <div className="card flex items-center justify-between gap-4 px-5 py-4">
+      <div>
+        <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-soil-400">Today at the farm</p>
+        <p className="num mt-0.5 text-2xl font-bold">{w.temp}°C</p>
+        <p className="text-sm text-soil-600">
+          {d.text}
+          {w.rain != null ? ` · ${w.rain}% chance of rain` : ''}
+        </p>
+      </div>
+      <span className="text-4xl" aria-hidden>
+        {d.icon}
+      </span>
+    </div>
+  )
 }

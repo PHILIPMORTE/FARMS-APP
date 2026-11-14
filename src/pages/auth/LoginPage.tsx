@@ -3,6 +3,7 @@ import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import { Dialog } from '@/components/ui'
+import { ForgotPasswordDialog } from '@/components/ForgotPasswordDialog'
 import { useAuth } from '@/context/AuthContext'
 import { ROLE_HOME, ROLE_LABEL } from '@/lib/format'
 import type { Role } from '@/lib/types'
@@ -37,14 +38,14 @@ interface RegistrationStatus {
 }
 
 export default function LoginPage({ role }: { role: Role }) {
-  const { session, profile, signInWithPhone, registerWithPhone, signInWithGoogle, sendPasswordReset } =
-    useAuth()
+  const { session, profile, signInWithPhone, registerWithPhone, signInWithGoogle } = useAuth()
   const navigate = useNavigate()
 
   const [tab, setTab] = useState<'signin' | 'register'>('signin')
   const [busy, setBusy] = useState(false)
   const [agreed, setAgreed] = useState(false)
   const [privacyOpen, setPrivacyOpen] = useState(false)
+  const [forgotOpen, setForgotOpen] = useState(false)
   const [existing, setExisting] = useState<RegistrationStatus | null>(null)
   const [errors, setErrors] = useState<Errors>({})
   const [form, setForm] = useState({ name: '', phone: '', password: '', confirm: '' })
@@ -137,17 +138,13 @@ export default function LoginPage({ role }: { role: Role }) {
     }
   }
 
-  async function onForgot() {
+  function onForgot() {
     if (validatePhone(form.phone)) {
       setErrors({ phone: 'Enter your mobile number first, then tap Forgot password.' })
       return
     }
-    try {
-      await sendPasswordReset(form.phone)
-      toast.success('Password reset link sent to the email on this account.')
-    } catch (err) {
-      toast.error(friendlyError(err))
-    }
+    setErrors({})
+    setForgotOpen(true)
   }
 
   const other = NEXT_ROLE[role]
@@ -382,6 +379,21 @@ export default function LoginPage({ role }: { role: Role }) {
         </div>
       </div>
       <PrivacyNotice open={privacyOpen} onClose={() => setPrivacyOpen(false)} />
+
+      {forgotOpen && (
+        <ForgotPasswordDialog
+          phone={form.phone}
+          onClose={() => setForgotOpen(false)}
+          onDone={() => {
+            setForgotOpen(false)
+            setExisting(null)
+            setErrors({})
+            set('password', '')
+            setTab('signin')
+            toast.success('Password changed. Sign in with your new password.')
+          }}
+        />
+      )}
     </div>
   )
 }

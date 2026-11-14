@@ -102,6 +102,7 @@ export default function OwnerOrders() {
     }
     setSukiCounts(counts)
 
+    if (!list.length) setEvents({})
     if (list.length) {
       const { data: evs } = await supabase
         .from('order_events')
@@ -428,6 +429,39 @@ export default function OwnerOrders() {
 
                 <BuyerContactCard buyer={o.buyer} />
 
+                {stage !== 'cancelled' && (
+                  <div className="flex items-center justify-between gap-2 rounded-xl border border-soil-200 px-3 py-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setPayDetails(o.id)}
+                      className="flex flex-wrap items-center gap-1.5 text-left"
+                      title="See the payment details"
+                    >
+                      <MethodChip method={o.payment_method} />
+                      {o.payment_method === 'gcash' && !o.paid && (
+                        <span
+                          className={`text-[11px] font-semibold underline ${
+                            o.gcash_reference ? 'text-sky-700' : 'text-amber-700'
+                          }`}
+                        >
+                          {o.gcash_reference ? `Ref ${o.gcash_reference}` : 'No reference yet'}
+                        </span>
+                      )}
+                    </button>
+                    {o.paid ? (
+                      <Badge tone="green">Paid</Badge>
+                    ) : (
+                      <button
+                        className="btn-sm bg-brand-600 text-white hover:bg-brand-700"
+                        disabled={settling === o.id}
+                        onClick={() => togglePaid(o)}
+                      >
+                        {settling === o.id ? '…' : 'Mark paid'}
+                      </button>
+                    )}
+                  </div>
+                )}
+
                 <details className="rounded-lg border border-soil-200">
                   <summary className="cursor-pointer px-3.5 py-2.5 text-[13px] font-semibold">
                     Progress
@@ -445,7 +479,13 @@ export default function OwnerOrders() {
                   <div className="grid grid-cols-2 gap-2 border-t border-soil-200 pt-3">
                     {nextStage ? (
                       <button
-                        className="btn-primary py-2 text-[13px]"
+                        className="btn-primary py-2 text-[13px] disabled:opacity-40"
+                        disabled={nextStage === 'completed' && !o.paid}
+                        title={
+                          nextStage === 'completed' && !o.paid
+                            ? 'Mark the order as paid first'
+                            : undefined
+                        }
                         onClick={() => setActing({ order: o, stage: nextStage })}
                       >
                         {STAGE_LABEL[nextStage]}

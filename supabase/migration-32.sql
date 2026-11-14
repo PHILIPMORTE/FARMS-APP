@@ -204,6 +204,8 @@ grant execute on function public.farmer_time_out(numeric, numeric, numeric, text
 drop function if exists public.farmer_time_in(uuid, numeric, numeric);
 drop function if exists public.farmer_time_out(numeric, numeric);
 
+drop function if exists public.my_job_locations();
+
 create or replace function public.my_job_locations()
 returns table (
   job_id      uuid,

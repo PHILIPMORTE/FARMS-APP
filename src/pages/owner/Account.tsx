@@ -3,10 +3,16 @@ import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import { useAuth, isPhoneTakenForRole } from '@/context/AuthContext'
 import { AccountHeader } from '@/components/AccountHeader'
-import { PurokFromPin, PurokSelect } from '@/components/PurokSelect'
+import { PurokSelect } from '@/components/PurokSelect'
 import { RatingBadge } from '@/components/Ratings'
 import { Field, SectionHeading, Spinner } from '@/components/ui'
-import { friendlyError, normalisePhone, validateName, validatePhone } from '@/lib/validation'
+import {
+  friendlyError,
+  normalisePhone,
+  validateEmail,
+  validateName,
+  validatePhone,
+} from '@/lib/validation'
 
 export default function OwnerAccount() {
   const { profile, farm, refresh } = useAuth()
@@ -41,9 +47,13 @@ export default function OwnerAccount() {
     e.preventDefault()
     if (!profile || !farm) return
 
-    const next = { name: validateName(form.name), phone: validatePhone(form.phone) }
+    const next = {
+      name: validateName(form.name),
+      phone: validatePhone(form.phone),
+      email: validateEmail(form.email ?? ''),
+    }
     setErrors(next)
-    if (next.name || next.phone) return
+    if (next.name || next.phone || next.email) return
 
     const normalised = normalisePhone(form.phone)!
 
@@ -126,9 +136,10 @@ export default function OwnerAccount() {
             <Field
               label="Email"
               type="email"
-              placeholder="Needed for password resets"
+              placeholder="For password resets and email notices"
               className="sm:col-span-2"
               value={form.email ?? ''}
+              error={errors.email}
               onChange={(e) => set('email', e.target.value)}
             />
           </div>
@@ -142,6 +153,13 @@ export default function OwnerAccount() {
             <Field label="City or municipality" value={form.city ?? ''} onChange={(e) => set('city', e.target.value)} />
             <Field label="Province" value={form.province ?? ''} onChange={(e) => set('province', e.target.value)} />
             <Field label="ZIP code" inputMode="numeric" value={form.zip_code ?? ''} onChange={(e) => set('zip_code', e.target.value)} />
+            <PurokSelect
+              label="Purok of your farm"
+              className="sm:col-span-2"
+              value={form.purok_id ?? ''}
+              onChange={(id) => set('purok_id', id)}
+              hint="New plantings start with this purok, so you do not pick it each time."
+            />
           </div>
         </section>
 

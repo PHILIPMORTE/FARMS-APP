@@ -6,7 +6,7 @@ import { friendlyError } from '@/lib/validation'
 import { useAuth } from '@/context/AuthContext'
 import { DataTable, Dialog, Empty, Search, Spinner, Stat, TextArea, ViewToggle } from '@/components/ui'
 import { OrderTimeline, StageBadge } from '@/components/OrderTimeline'
-import { CROP_EMOJI, effectiveStage, peso, pesoShort, sacks, shortDate, weightNote, perUnit, sacksLabel } from '@/lib/format'
+import { CROP_EMOJI, effectiveStage, peso, pesoShort, sacks, shortDate, perUnit, sacksLabel, KG_PER_SACK } from '@/lib/format'
 import { MethodChip, OrderPaymentDialog } from '@/components/PaymentMethods'
 import type { Order, OrderEvent } from '@/lib/types'
 
@@ -34,14 +34,32 @@ export default function BuyerOrders() {
   const [reason, setReason] = useState('')
   const [busy, setBusy] = useState(false)
 
-  async function reloadOrders() {
+  // Orders and the timeline events under them, loaded together so they never disagree.
+  async function load() {
     if (!profile) return
     const { data } = await supabase
       .from('orders')
       .select('*, products(*, farms(name, city, province))')
       .eq('buyer_id', profile.id)
       .order('created_at', { ascending: false })
-    setOrders((data as unknown as Order[]) ?? [])
+    const list = (data as unknown as Order[]) ?? []
+    setOrders(list)
+
+    if (!list.length) {
+      setEvents({})
+      return
+    }
+    const { data: evs } = await supabase
+      .from('order_events')
+      .select('*')
+      .in('order_id', list.map((o) => o.id))
+      .order('created_at', { ascending: true })
+
+    const grouped: Record<string, OrderEvent[]> = {}
+    for (const e of (evs as OrderEvent[]) ?? []) {
+      ;(grouped[e.order_id] ??= []).push(e)
+    }
+    setEvents(grouped)
   }
 
   async function confirmCancel() {
@@ -59,51 +77,17 @@ export default function BuyerOrders() {
     toast.success('Order cancelled')
     setCancelling(null)
     setReason('')
-
-    const { data } = await supabase
-      .from('orders')
-      .select('*, products(*, farms(name, city, province))')
-      .eq('buyer_id', profile!.id)
-      .order('created_at', { ascending: false })
-    setOrders((data as unknown as Order[]) ?? [])
+    await load()
   }
 
   useEffect(() => {
     if (!profile) return
-    ;(async () => {
-      const { data } = await supabase
-        .from('orders')
-        .select('*, products(*, farms(name, city, province))')
-        .eq('buyer_id', profile.id)
-        .order('created_at', { ascending: false })
-      const list = (data as unknown as Order[]) ?? []
-      setOrders(list)
-
-      if (list.length) {
-        const { data: evs } = await supabase
-          .from('order_events')
-          .select('*')
-          .in('order_id', list.map((o) => o.id))
-          .order('created_at', { ascending: true })
-
-        const grouped: Record<string, OrderEvent[]> = {}
-        for (const e of (evs as OrderEvent[]) ?? []) {
-          ;(grouped[e.order_id] ??= []).push(e)
-        }
-        setEvents(grouped)
-      }
-    })()
+    void load()
 
     const channel = supabase
-      .channel(`buyer-orders-${profile?.id}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
-        supabase
-          .from('orders')
-          .select('*, products(*, farms(name, city, province))')
-          .eq('buyer_id', profile!.id)
-          .order('created_at', { ascending: false })
-          .then(({ data }) => setOrders((data as unknown as Order[]) ?? []))
-      })
+      .channel(`buyer-orders-${profile.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => void load())
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'order_events' }, () => void load())
       .subscribe()
 
     return () => {
@@ -282,10 +266,14 @@ export default function BuyerOrders() {
                     <dt className="text-soil-600">Quantity</dt>
                     <dd className="num font-semibold">{sacksLabel(o.quantity, o.products?.crop)}</dd>
                   </div>
-                  <div className="flex justify-between">
-                    <dt className="text-soil-600">Weight</dt>
-                    <dd className="num font-semibold">{weightNote(o.quantity).split('= ')[1]}</dd>
-                  </div>
+                  {p?.crop === 'rice' && (
+                    <div className="flex justify-between">
+                      <dt className="text-soil-600">Weight</dt>
+                      <dd className="num font-semibold">
+                        {(Math.floor(o.quantity) * KG_PER_SACK).toLocaleString('en-PH')} kg
+                      </dd>
+                    </div>
+                  )}
                   {p && (
                     <div className="flex justify-between">
                       <dt className="text-soil-600">Price {perUnit(o.products?.crop)}</dt>
@@ -359,7 +347,7 @@ export default function BuyerOrders() {
         orderId={payingFor}
         role="buyer"
         onClose={() => setPayingFor(null)}
-        onChanged={() => reloadOrders()}
+        onChanged={() => void load()}
       />
 
       <RateDialog
