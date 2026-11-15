@@ -331,6 +331,33 @@ export function OrderPaymentDialog({
     }
   }
 
+  // Opens the GCash app on a phone. GCash has no link that fills in a person's number, so the
+  // number is copied first and the buyer pastes it under Send Money.
+  function openGcash() {
+    if (info?.gcash_number) {
+      try {
+        void navigator.clipboard?.writeText(info.gcash_number).catch(() => undefined)
+      } catch {
+        // copying is a convenience only
+      }
+    }
+    toast.success('Number copied. Opening GCash…')
+    const timer = window.setTimeout(() => {
+      if (!document.hidden) {
+        toast.info('GCash did not open. Open the app yourself, choose Send Money, then paste the number.')
+      }
+    }, 1800)
+    document.addEventListener(
+      'visibilitychange',
+      () => {
+        if (document.hidden) window.clearTimeout(timer)
+      },
+      { once: true },
+    )
+    window.location.href = 'gcash://'
+  }
+
+  const onPhone = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
   const gcash = info?.method === 'gcash'
 
   return (
@@ -390,9 +417,34 @@ export function OrderPaymentDialog({
                     Copy
                   </button>
                 </div>
+                <div className="mt-3 flex items-center justify-between gap-2 rounded-lg bg-white/70 px-3 py-2">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-sky-900/70">
+                      Exact amount
+                    </p>
+                    <p className="num text-[18px] font-bold text-sky-900">{peso(info.amount)}</p>
+                  </div>
+                  <button
+                    type="button"
+                    className="rounded-md border border-sky-300 bg-white px-2 py-1 text-[12px] font-semibold text-sky-800"
+                    onClick={() => copy(Number(info.amount).toFixed(2), 'Amount')}
+                  >
+                    Copy
+                  </button>
+                </div>
+                {onPhone && (
+                  <button
+                    type="button"
+                    className="btn-primary mt-3 w-full"
+                    onClick={openGcash}
+                  >
+                    Open GCash
+                  </button>
+                )}
                 <p className="mt-2 text-[12px] leading-relaxed text-sky-900/70">
-                  Open your GCash app, choose Send Money, and enter this number and{' '}
-                  {peso(info.amount)}.
+                  {onPhone
+                    ? 'Tap Open GCash. The number is copied for you. In GCash choose Send Money, paste the number, and type the exact amount.'
+                    : 'On your phone, open GCash, choose Send Money, then enter this number and the exact amount.'}
                 </p>
               </div>
 
