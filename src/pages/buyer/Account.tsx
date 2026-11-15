@@ -4,13 +4,13 @@ import { supabase } from '@/lib/supabase'
 import { useAuth, isPhoneTakenForRole } from '@/context/AuthContext'
 import { AccountHeader } from '@/components/AccountHeader'
 import { Field, SectionHeading, Spinner } from '@/components/ui'
+import { AddressBookSection } from '@/components/AddressBook'
 import {
   friendlyError,
   normalisePhone,
   validateEmail,
   validateName,
   validatePhone,
-  validateRequired,
 } from '@/lib/validation'
 
 export default function BuyerAccount() {
@@ -26,9 +26,6 @@ export default function BuyerAccount() {
       phone: profile.phone?.startsWith('+63') ? `0${profile.phone.slice(3)}` : profile.phone ?? '',
       email: profile.email ?? '',
       company: profile.company ?? '',
-      address: profile.address ?? '',
-      city: profile.city ?? '',
-      zip_code: profile.zip_code ?? '',
     })
   }, [profile?.id])
 
@@ -45,8 +42,6 @@ export default function BuyerAccount() {
       name: validateName(form.name),
       phone: validatePhone(form.phone),
       email: validateEmail(form.email ?? ''),
-      address: validateRequired(form.address, 'Delivery address'),
-      city: validateRequired(form.city, 'City or municipality'),
     }
     setErrors(next)
     if (Object.values(next).some(Boolean)) return
@@ -68,9 +63,6 @@ export default function BuyerAccount() {
         phone: normalised,
         email: form.email.trim() || null,
         company: form.company.trim() || null,
-        address: form.address.trim(),
-        city: form.city.trim(),
-        zip_code: form.zip_code.trim(),
       })
       .eq('id', profile.id)
     setBusy(false)
@@ -118,29 +110,13 @@ export default function BuyerAccount() {
               error={errors.email}
               onChange={(e) => set('email', e.target.value)}
             />
-          </div>
-        </section>
-
-        <section>
-          <SectionHeading>Delivery details</SectionHeading>
-          <div className="card grid gap-4 p-5 sm:grid-cols-2">
-            <Field label="Company name" className="sm:col-span-2" value={form.company ?? ''} onChange={(e) => set('company', e.target.value)} />
             <Field
-              label="Delivery address"
+              label="Company name (optional)"
+              placeholder="e.g. your rice mill or store"
               className="sm:col-span-2"
-              placeholder="Purok / street, barangay"
-              hint="Farm owners see this on a map when you order."
-              value={form.address ?? ''}
-              error={errors.address}
-              onChange={(e) => set('address', e.target.value)}
+              value={form.company ?? ''}
+              onChange={(e) => set('company', e.target.value)}
             />
-            <Field
-              label="City or municipality"
-              value={form.city ?? ''}
-              error={errors.city}
-              onChange={(e) => set('city', e.target.value)}
-            />
-            <Field label="ZIP code" inputMode="numeric" value={form.zip_code ?? ''} onChange={(e) => set('zip_code', e.target.value)} />
           </div>
         </section>
 
@@ -148,6 +124,8 @@ export default function BuyerAccount() {
           {busy ? 'Saving…' : 'Save changes'}
         </button>
       </form>
+
+      <AddressBookSection />
     </div>
   )
 }

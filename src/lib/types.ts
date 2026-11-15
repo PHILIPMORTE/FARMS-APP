@@ -182,6 +182,26 @@ export interface Transaction {
   created_at: string
 }
 
+export type AddressLabel = 'Home' | 'Work' | 'Other'
+
+/** A place a buyer has saved to receive orders, like the address book in Shopee. */
+export interface BuyerAddress {
+  id: string
+  profile_id: string
+  label: AddressLabel
+  recipient_name: string
+  phone: string
+  province: string
+  city: string
+  barangay: string
+  purok_id: string | null
+  street: string
+  note: string
+  is_default: boolean
+  created_at: string
+  updated_at: string
+}
+
 export interface Order {
   id: string
   buyer_id: string
@@ -196,6 +216,11 @@ export interface Order {
   payment_method: 'cash' | 'gcash'
   gcash_reference: string | null
   gcash_reference_at: string | null
+  /** Where this order goes, copied from the buyer's saved address when it was placed. */
+  ship_name: string | null
+  ship_phone: string | null
+  ship_address: string | null
+  ship_note: string | null
   cancel_reason: string | null
   updated_at: string
   created_at: string

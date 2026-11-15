@@ -338,7 +338,8 @@ export default function OwnerMarket() {
                     <span className="block">—</span>
                   )}
                   <span className="block max-w-[14rem] truncate text-[12px] text-soil-400">
-                    {[o.buyer?.address, o.buyer?.city].filter(Boolean).join(', ') ||
+                    {o.ship_address ||
+                      [o.buyer?.address, o.buyer?.city].filter(Boolean).join(', ') ||
                       'No address given'}
                   </span>
                 </td>

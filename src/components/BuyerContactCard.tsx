@@ -1,11 +1,26 @@
 import { useEffect, useState } from 'react'
+import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import { RatingBadge } from '@/components/Ratings'
 import { initials, peso, sacks, sacksLabel, shortDate } from '@/lib/format'
 import { displayPhone } from '@/lib/validation'
 import type { Profile } from '@/lib/types'
 
-export function BuyerContactCard({ buyer }: { buyer: Profile | null | undefined }) {
+/** Where one order is going, as the buyer chose it at checkout. */
+export interface DeliveryInfo {
+  name: string | null
+  phone: string | null
+  address: string | null
+  note: string | null
+}
+
+export function BuyerContactCard({
+  buyer,
+  delivery,
+}: {
+  buyer: Profile | null | undefined
+  delivery?: DeliveryInfo | null
+}) {
   const [mapOpen, setMapOpen] = useState(false)
   const [history, setHistory] = useState<
     { id: string; quantity: number; total_price: number; created_at: string; variety: string; crop: string }[] | null
@@ -42,8 +57,22 @@ export function BuyerContactCard({ buyer }: { buyer: Profile | null | undefined 
     )
   }
 
-  const address = [buyer.address, buyer.city, buyer.zip_code].filter(Boolean).join(', ')
+  const address =
+    delivery?.address?.trim() || [buyer.address, buyer.city, buyer.zip_code].filter(Boolean).join(', ')
   const mapQuery = encodeURIComponent(address || buyer.city || '')
+  const callPhone = delivery?.phone || buyer.phone
+
+  async function copyAddress() {
+    const text = [delivery?.name, delivery?.phone ? displayPhone(delivery.phone) : null, address]
+      .filter(Boolean)
+      .join('\n')
+    try {
+      await navigator.clipboard.writeText(text)
+      toast.success('Address copied')
+    } catch {
+      toast.error('Could not copy. Select the address and copy it by hand.')
+    }
+  }
 
   return (
     <div className="rounded-xl border border-soil-200 bg-white p-4">
@@ -60,22 +89,45 @@ export function BuyerContactCard({ buyer }: { buyer: Profile | null | undefined 
         </div>
       </div>
 
-      {address ? (
+      {delivery?.address ? (
+        <div className="mt-3 rounded-lg border border-sky-200 bg-sky-50 px-3.5 py-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-sky-900/70">
+            Deliver to
+          </p>
+          <p className="mt-1 text-[14px] font-bold">
+            {delivery.name || buyer.name}
+            {delivery.phone && (
+              <span className="num font-normal text-soil-600"> · {displayPhone(delivery.phone)}</span>
+            )}
+          </p>
+          <p className="mt-0.5 text-[13px] leading-relaxed text-soil-700">📍 {delivery.address}</p>
+          {delivery.note && (
+            <p className="mt-1 text-[12px] italic text-soil-600">Note: {delivery.note}</p>
+          )}
+          <button
+            type="button"
+            onClick={copyAddress}
+            className="mt-2 text-[12px] font-semibold text-sky-800 hover:underline"
+          >
+            Copy address
+          </button>
+        </div>
+      ) : address ? (
         <p className="mt-3 text-[13px] leading-relaxed text-soil-600">📍 {address}</p>
       ) : (
         <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-[12px] leading-relaxed text-amber-800">
-          This buyer has not added a delivery address yet. Call them to arrange the drop-off point.
+          No delivery address was given for this order. Call the buyer to arrange the drop-off point.
         </p>
       )}
 
       <div className="mt-3 grid grid-cols-2 gap-2">
-        <a href={`tel:${buyer.phone}`} className="btn-primary py-2 text-[13px]">
+        <a href={`tel:${callPhone}`} className="btn-primary py-2 text-[13px]">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z" />
           </svg>
           Call buyer
         </a>
-        <a href={`sms:${buyer.phone}`} className="btn-ghost py-2 text-[13px]">
+        <a href={`sms:${callPhone}`} className="btn-ghost py-2 text-[13px]">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9 9 0 0 1-3.9-.9L3 21l2-4.1A8.4 8.4 0 0 1 12 3a8.4 8.4 0 0 1 9 8.5z" />
           </svg>

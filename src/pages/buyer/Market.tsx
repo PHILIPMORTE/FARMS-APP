@@ -16,6 +16,7 @@ import {
 } from '@/components/ui'
 import { TopFarms } from '@/components/TopFarms'
 import { FarmProfileDialog } from '@/components/FarmProfileDialog'
+import { AddressFormDialog, DeliveryPicker, useBuyerAddresses } from '@/components/AddressBook'
 import { CROPS, CROP_EMOJI, KG_PER_SACK, canBeMilled, perUnit, unitWord, unitOf, sacksLabel, availableSacks, peso, sacks, titleCase, toSacks } from '@/lib/format'
 import { friendlyError, validateSacks } from '@/lib/validation'
 import {
@@ -24,10 +25,11 @@ import {
   PayChips,
   type PayMethod,
 } from '@/components/PaymentMethods'
-import type { Product } from '@/lib/types'
+import type { BuyerAddress, Product } from '@/lib/types'
 
 export default function BuyerMarket() {
   const { profile } = useAuth()
+  const { list: savedAddresses } = useBuyerAddresses()
   const [items, setItems] = useState<Product[] | null>(null)
   const [query, setQuery] = useState('')
   const [buying, setBuying] = useState<Product | null>(null)
@@ -127,15 +129,16 @@ export default function BuyerMarket() {
         </p>
       </div>
 
-      {profile && (!profile.address || !profile.city) && (
+      {profile && savedAddresses && savedAddresses.length === 0 && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
           <p className="text-[13px] font-semibold text-amber-900">
             Add your delivery address
           </p>
           <p className="mt-0.5 text-[13px] leading-relaxed text-amber-800">
-            Farm owners use it to find you and arrange delivery.{' '}
+            Farm owners use it to know where to deliver your order. You can also add one when you
+            order.{' '}
             <Link to="/buyer/account" className="font-semibold underline">
-              Complete your account
+              Add it in your account
             </Link>
           </p>
         </div>
@@ -467,6 +470,9 @@ function BuyDialog({
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [method, setMethod] = useState<PayMethod>('cash')
+  const { list: addresses, reload: reloadAddresses } = useBuyerAddresses()
+  const [addressId, setAddressId] = useState<string | null>(null)
+  const [addrForm, setAddrForm] = useState<{ editing: BuyerAddress | null } | null>(null)
 
   useEffect(() => {
     if (product) {
@@ -476,6 +482,20 @@ function BuyDialog({
       setMethod(product.pay_cash ? 'cash' : 'gcash')
     }
   }, [product?.id])
+
+  // Stable on purpose: a new function on every keystroke would make the dialog grab focus again.
+  const handleClose = useCallback(() => {
+    // Escape while the address form is open should close only the form.
+    if (!addrForm) onClose()
+  }, [addrForm, onClose])
+
+  // Start on the buyer's default address, like Shopee. Keep their pick while the list reloads.
+  useEffect(() => {
+    if (!addresses) return
+    if (!addressId || !addresses.some((a) => a.id === addressId)) {
+      setAddressId(addresses.find((a) => a.is_default)?.id ?? addresses[0]?.id ?? null)
+    }
+  }, [addresses, product?.id])
 
   if (!product) return <Dialog open={false} onClose={onClose} title="">{null}</Dialog>
 
@@ -494,12 +514,18 @@ function BuyDialog({
     setError(err)
     if (err) return
 
+    if (!addressId) {
+      toast.error('Choose where this order should be delivered.')
+      return
+    }
+
     setBusy(true)
 
     const { error: rpcError } = await supabase.rpc('purchase_product', {
       p_product_id: product!.id,
       p_quantity: parseInt(qty, 10),
       p_payment_method: method,
+      p_address_id: addressId,
     })
     setBusy(false)
 
@@ -516,9 +542,10 @@ function BuyDialog({
   }
 
   return (
+    <>
     <Dialog
       open
-      onClose={onClose}
+      onClose={handleClose}
       title={`Buy ${product.variety}`}
       description={`${product.farms?.name ?? 'Farm'} · ${peso(product.price)} ${perUnit(product.crop)}`}
       footer={
@@ -526,13 +553,21 @@ function BuyDialog({
           <button className="btn-ghost" onClick={onClose}>
             Cancel
           </button>
-          <button className="btn-primary" onClick={confirm} disabled={busy || !valid}>
+          <button className="btn-primary" onClick={confirm} disabled={busy || !valid || !addressId}>
             {busy ? 'Placing order…' : 'Confirm order'}
           </button>
         </>
       }
     >
       <div className="space-y-4">
+
+        <DeliveryPicker
+          list={addresses}
+          value={addressId}
+          onChange={setAddressId}
+          onAdd={() => setAddrForm({ editing: null })}
+          onEdit={(a) => setAddrForm({ editing: a })}
+        />
 
         <div className="flex items-center justify-between gap-3 rounded-lg bg-brand-50 px-4 py-3">
           <span className="text-[13px] font-semibold text-brand-900">Available now</span>
@@ -613,5 +648,18 @@ function BuyDialog({
         </dl>
       </div>
     </Dialog>
+
+    <AddressFormDialog
+      open={addrForm !== null}
+      editing={addrForm?.editing ?? null}
+      isFirst={(addresses?.length ?? 0) === 0}
+      onClose={() => setAddrForm(null)}
+      onSaved={async (id) => {
+        setAddrForm(null)
+        await reloadAddresses()
+        setAddressId(id)
+      }}
+    />
+    </>
   )
 }

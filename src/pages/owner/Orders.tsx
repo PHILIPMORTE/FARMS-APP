@@ -427,7 +427,15 @@ export default function OwnerOrders() {
                   </div>
                 </dl>
 
-                <BuyerContactCard buyer={o.buyer} />
+                <BuyerContactCard
+                  buyer={o.buyer}
+                  delivery={{
+                    name: o.ship_name,
+                    phone: o.ship_phone,
+                    address: o.ship_address,
+                    note: o.ship_note,
+                  }}
+                />
 
                 {stage !== 'cancelled' && (
                   <div className="flex items-center justify-between gap-2 rounded-xl border border-soil-200 px-3 py-2.5">

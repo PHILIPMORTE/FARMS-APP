@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import { RateDialog } from '@/components/Ratings'
-import { friendlyError } from '@/lib/validation'
+import { friendlyError, displayPhone } from '@/lib/validation'
 import { useAuth } from '@/context/AuthContext'
 import { DataTable, Dialog, Empty, Search, Spinner, Stat, TextArea, ViewToggle } from '@/components/ui'
 import { OrderTimeline, StageBadge } from '@/components/OrderTimeline'
@@ -285,6 +285,21 @@ export default function BuyerOrders() {
                     <dd className="num font-bold text-brand-700">{peso(o.total_price)}</dd>
                   </div>
                 </dl>
+
+                {o.ship_address && (
+                  <div className="rounded-lg bg-soil-50 px-3.5 py-2.5">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-soil-400">
+                      Deliver to
+                    </p>
+                    <p className="mt-0.5 text-[13px] font-semibold">
+                      {o.ship_name}
+                      {o.ship_phone && (
+                        <span className="num font-normal text-soil-600"> · {displayPhone(o.ship_phone)}</span>
+                      )}
+                    </p>
+                    <p className="text-[12px] leading-relaxed text-soil-600">📍 {o.ship_address}</p>
+                  </div>
+                )}
 
                 <div className="border-t border-soil-200 pt-3">
                   <OrderTimeline
