@@ -21,10 +21,21 @@ const EXPENSE_CATEGORIES = [
   'Other',
 ]
 
+/** How many of the owner's own income entries can still be edited, newest first. */
+const EDITABLE_INCOME_COUNT = 3
+
+/**
+ * Sales that come from buyer orders are booked by the system ("12 sacks of Dinorado sold to ...").
+ * They mirror a real order, so they are never edited by hand. Everything else in income is
+ * something the owner typed in.
+ */
+const isOrderSale = (t: Transaction) => t.category === 'Crop Sales' && / sold to /i.test(t.description ?? '')
+
 export default function OwnerFinance() {
   const { farm } = useAuth()
   const [rows, setRows] = useState<Transaction[] | null>(null)
   const [dialog, setDialog] = useState<TxnType | null>(null)
+  const [editing, setEditing] = useState<Transaction | null>(null)
 
   async function load() {
     if (!farm) return
@@ -47,6 +58,14 @@ export default function OwnerFinance() {
   const income = rows.filter((r) => r.type === 'income').reduce((s, r) => s + Number(r.amount), 0)
   const expenses = rows.filter((r) => r.type === 'expense').reduce((s, r) => s + Number(r.amount), 0)
   const net = income - expenses
+
+  // The rows are newest first, so these are the latest income entries the owner added.
+  const editableIds = new Set(
+    rows
+      .filter((r) => r.type === 'income' && !isOrderSale(r))
+      .slice(0, EDITABLE_INCOME_COUNT)
+      .map((r) => r.id),
+  )
 
   return (
     <div className="animate-fade-up space-y-6">
@@ -118,25 +137,53 @@ export default function OwnerFinance() {
                   <p className="mt-1 truncate text-[13px] text-soil-600">{t.description}</p>
                 )}
               </div>
-              <span
-                className={`num shrink-0 text-sm font-bold ${
-                  t.type === 'income' ? 'text-green-700' : 'text-red-600'
-                }`}
-              >
-                {t.type === 'income' ? '+' : '−'}
-                {peso(t.amount)}
-              </span>
+              <div className="flex shrink-0 items-center gap-3">
+                <span
+                  className={`num text-sm font-bold ${
+                    t.type === 'income' ? 'text-green-700' : 'text-red-600'
+                  }`}
+                >
+                  {t.type === 'income' ? '+' : '−'}
+                  {peso(t.amount)}
+                </span>
+                {editableIds.has(t.id) && (
+                  <button
+                    type="button"
+                    onClick={() => setEditing(t)}
+                    aria-label={`Edit income of ${peso(t.amount)} on ${shortDate(t.date)}`}
+                    className="inline-flex items-center gap-1 rounded-lg border border-soil-200 px-2.5 py-1.5
+                               text-[12px] font-semibold text-soil-800 transition hover:bg-soil-50"
+                  >
+                    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z" />
+                      <path d="M13.5 6.5l4 4" />
+                    </svg>
+                    Edit
+                  </button>
+                )}
+              </div>
             </li>
           ))}
         </ul>
       )}
+      {editableIds.size > 0 && (
+        <p className="-mt-3 text-[12px] text-soil-400">
+          Edit is on the {EDITABLE_INCOME_COUNT} latest income entries you added. Sales from buyer orders are
+          recorded by the system and cannot be edited.
+        </p>
+      )}
 
       <TxnDialog
-        type={dialog}
+        type={editing ? 'income' : dialog}
+        editing={editing}
         farmId={farm?.id ?? ''}
-        onClose={() => setDialog(null)}
+        onClose={() => {
+          setDialog(null)
+          setEditing(null)
+        }}
         onSaved={() => {
           setDialog(null)
+          setEditing(null)
           load()
         }}
       />
@@ -146,17 +193,21 @@ export default function OwnerFinance() {
 
 function TxnDialog({
   type,
+  editing,
   farmId,
   onClose,
   onSaved,
 }: {
   type: TxnType | null
+  editing: Transaction | null
   farmId: string
   onClose(): void
   onSaved(): void
 }) {
   const isIncome = type !== 'expense'
-  const categories = isIncome ? INCOME_CATEGORIES : EXPENSE_CATEGORIES
+  const baseCategories = isIncome ? INCOME_CATEGORIES : EXPENSE_CATEGORIES
+  const categories =
+    editing && !baseCategories.includes(editing.category) ? [editing.category, ...baseCategories] : baseCategories
 
   const [form, setForm] = useState({
     category: categories[0],
@@ -168,7 +219,15 @@ function TxnDialog({
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
-    if (type) {
+    if (editing) {
+      setForm({
+        category: editing.category,
+        amount: String(editing.amount),
+        description: editing.description ?? '',
+        date: editing.date,
+      })
+      setErrors({})
+    } else if (type) {
       setForm({
         category: (isIncome ? INCOME_CATEGORIES : EXPENSE_CATEGORIES)[0],
         amount: '',
@@ -177,7 +236,7 @@ function TxnDialog({
       })
       setErrors({})
     }
-  }, [type])
+  }, [type, editing?.id])
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -190,6 +249,35 @@ function TxnDialog({
     if (next.amount) return
 
     setBusy(true)
+    if (editing) {
+      // Only this farm's own income row can be changed here.
+      const { data, error } = await supabase
+        .from('transactions')
+        .update({
+          category: form.category,
+          amount: Number(form.amount),
+          description: form.description.trim(),
+          date: form.date,
+        })
+        .eq('id', editing.id)
+        .eq('farm_id', farmId)
+        .eq('type', 'income')
+        .select('id')
+      setBusy(false)
+
+      if (error) {
+        toast.error(friendlyError(error))
+        return
+      }
+      if (!data || data.length === 0) {
+        toast.error('That entry could not be changed. Reload the page and try again.')
+        return
+      }
+      toast.success('Income updated')
+      onSaved()
+      return
+    }
+
     const { error } = await supabase.from('transactions').insert({
       farm_id: farmId,
       type,
@@ -212,14 +300,14 @@ function TxnDialog({
     <Dialog
       open={type !== null}
       onClose={onClose}
-      title={isIncome ? 'Add income' : 'Add expense'}
+      title={editing ? 'Edit income' : isIncome ? 'Add income' : 'Add expense'}
       footer={
         <>
           <button type="button" className="btn-ghost" onClick={onClose}>
             Cancel
           </button>
           <button className={isIncome ? 'btn-primary' : 'btn-danger'} onClick={submit} disabled={busy}>
-            {busy ? 'Saving…' : isIncome ? 'Add income' : 'Add expense'}
+            {busy ? 'Saving…' : editing ? 'Save changes' : isIncome ? 'Add income' : 'Add expense'}
           </button>
         </>
       }
