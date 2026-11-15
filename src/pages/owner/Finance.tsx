@@ -43,8 +43,8 @@ export default function OwnerFinance() {
       .from('transactions')
       .select('*')
       .eq('farm_id', farm.id)
-      .order('date', { ascending: false })
       .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
     setRows((data as Transaction[]) ?? [])
 
   }
@@ -59,13 +59,13 @@ export default function OwnerFinance() {
   const expenses = rows.filter((r) => r.type === 'expense').reduce((s, r) => s + Number(r.amount), 0)
   const net = income - expenses
 
-  // The 3 income entries the owner added most recently. Add a new one and it takes a place,
-  // while the oldest of the three loses its Edit button. Ranked by when it was added, not by
-  // the date typed in, so an entry dated last week is still editable right after it is added.
+  // The list is newest-added first, so these are the first 3 income entries the owner added.
+  // Add a new one and it takes a place, while the oldest of the three loses its Edit button.
+  // (Ranked by when it was added, not by the date typed in, so an entry dated last week is
+  // still editable right after it is added.)
   const editableIds = new Set(
     rows
       .filter((r) => r.type === 'income' && !isOrderSale(r))
-      .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
       .slice(0, EDITABLE_INCOME_COUNT)
       .map((r) => r.id),
   )
