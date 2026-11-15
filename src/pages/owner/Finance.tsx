@@ -21,15 +21,11 @@ const EXPENSE_CATEGORIES = [
   'Other',
 ]
 
-/** How many of the owner's own income entries can still be edited, newest first. */
-const EDITABLE_INCOME_COUNT = 3
-
 /**
- * Sales that come from buyer orders are booked by the system ("12 sacks of Dinorado sold to ...").
- * They mirror a real order, so they are never edited by hand. Everything else in income is
- * something the owner typed in.
+ * How many entries, newest first, can still be edited. It counts everything in the list:
+ * income, expenses, costs added from the Calendar, and the sales and wages the system books.
  */
-const isOrderSale = (t: Transaction) => t.category === 'Crop Sales' && / sold to /i.test(t.description ?? '')
+const EDITABLE_COUNT = 3
 
 export default function OwnerFinance() {
   const { farm } = useAuth()
@@ -59,16 +55,11 @@ export default function OwnerFinance() {
   const expenses = rows.filter((r) => r.type === 'expense').reduce((s, r) => s + Number(r.amount), 0)
   const net = income - expenses
 
-  // The list is newest-added first, so these are the first 3 income entries the owner added.
+  // The list is newest-added first, so these are the first 3 rows shown, whatever kind they are.
   // Add a new one and it takes a place, while the oldest of the three loses its Edit button.
   // (Ranked by when it was added, not by the date typed in, so an entry dated last week is
   // still editable right after it is added.)
-  const editableIds = new Set(
-    rows
-      .filter((r) => r.type === 'income' && !isOrderSale(r))
-      .slice(0, EDITABLE_INCOME_COUNT)
-      .map((r) => r.id),
-  )
+  const editableIds = new Set(rows.slice(0, EDITABLE_COUNT).map((r) => r.id))
 
   return (
     <div className="animate-fade-up space-y-6">
@@ -153,7 +144,7 @@ export default function OwnerFinance() {
                   <button
                     type="button"
                     onClick={() => setEditing(t)}
-                    aria-label={`Edit income of ${peso(t.amount)} on ${shortDate(t.date)}`}
+                    aria-label={`Edit ${t.type} of ${peso(t.amount)} on ${shortDate(t.date)}`}
                     className="inline-flex items-center gap-1 rounded-lg border border-soil-200 px-2.5 py-1.5
                                text-[12px] font-semibold text-soil-800 transition hover:bg-soil-50"
                   >
@@ -171,13 +162,13 @@ export default function OwnerFinance() {
       )}
       {editableIds.size > 0 && (
         <p className="-mt-3 text-[12px] text-soil-400">
-          Edit is on the {EDITABLE_INCOME_COUNT} latest income entries you added. Sales from buyer orders are
-          recorded by the system and cannot be edited.
+          Edit is on the {EDITABLE_COUNT} newest entries in this list, whether income, expense or a cost
+          added from the Calendar.
         </p>
       )}
 
       <TxnDialog
-        type={editing ? 'income' : dialog}
+        type={editing ? editing.type : dialog}
         editing={editing}
         farmId={farm?.id ?? ''}
         onClose={() => {
@@ -253,7 +244,8 @@ function TxnDialog({
 
     setBusy(true)
     if (editing) {
-      // Only this farm's own income row can be changed here.
+      // Only a row of this farm, of the same kind, can be changed here. Its crop and planting
+      // link are left alone, so a cost added from the Calendar stays on its crop.
       const { data, error } = await supabase
         .from('transactions')
         .update({
@@ -264,7 +256,7 @@ function TxnDialog({
         })
         .eq('id', editing.id)
         .eq('farm_id', farmId)
-        .eq('type', 'income')
+        .eq('type', editing.type)
         .select('id')
       setBusy(false)
 
@@ -276,7 +268,7 @@ function TxnDialog({
         toast.error('That entry could not be changed. Reload the page and try again.')
         return
       }
-      toast.success('Income updated')
+      toast.success(editing.type === 'income' ? 'Income updated' : 'Expense updated')
       onSaved()
       return
     }
@@ -303,7 +295,7 @@ function TxnDialog({
     <Dialog
       open={type !== null}
       onClose={onClose}
-      title={editing ? 'Edit income' : isIncome ? 'Add income' : 'Add expense'}
+      title={editing ? (isIncome ? 'Edit income' : 'Edit expense') : isIncome ? 'Add income' : 'Add expense'}
       footer={
         <>
           <button type="button" className="btn-ghost" onClick={onClose}>
