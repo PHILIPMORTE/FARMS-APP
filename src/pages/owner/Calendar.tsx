@@ -51,6 +51,10 @@ const EXPENSE_CATEGORIES = [
 /** Today in the Philippines, as a date the month grids can start from (noon, so no clock shift can move the day). */
 const manilaToday = () => new Date(`${todayISO()}T12:00:00`)
 
+/** Land that 1 g of seed covers, from the crop's seed rate (kg of seed per hectare). */
+const m2PerGram = (kgPerHectare: number) =>
+  Number((10 / kgPerHectare).toPrecision(2)).toLocaleString('en-PH')
+
 export default function OwnerCalendar() {
   const { farm } = useAuth()
   const [cursor, setCursor] = useState(manilaToday)
@@ -990,7 +994,6 @@ function AddPlantingDialog({
           value={form.purok_id}
           error={errors.purok_id}
           onChange={(id) => set('purok_id', id)}
-          hint="Lets the barangay see which puroks are planting what."
         />
 
         {form.variety === '__other' && (
@@ -1098,8 +1101,8 @@ function AddPlantingDialog({
 
             {inPieces && (
               <p className="mt-2 text-[11px] leading-relaxed text-brand-900/60">
-                The target is what this planting should bear when the crop is at its healthiest,
-                at around {estimate.avg_fruit_kg} kg {isMelon ? 'a fruit' : `an ${pieceNoun(form.crop)}`}.
+                The target is what this planting should bear when the crop is at its healthiest
+                {isMelon ? `, at around ${estimate.avg_fruit_kg} kg a fruit.` : '.'}
               </p>
             )}
 
@@ -1112,25 +1115,15 @@ function AddPlantingDialog({
                   {Math.round(land.sqm).toLocaleString()} m²
                 </p>
                 <p className="mt-0.5 text-[11px] text-brand-900/60">
-                  {isMelon
-                    ? `${Math.round(land.kg_per_hectare * 1000)} g of seed covers 10,000 m² of Watermelon`
-                    : ((land as any).caption ??
-                      `${land.kg_per_hectare} kg of seed covers 10,000 m² of ${titleCase(form.crop)}`)}
+                  {form.crop === 'corn' && (land as any).caption
+                    ? (land as any).caption
+                    : `1 g of seed covers ${m2PerGram(land.kg_per_hectare)} m² of ${titleCase(form.crop)}`}
                 </p>
               </div>
             )}
 
           </div>
         )}
-
-        <TextArea
-          label="Note"
-          max={200}
-          rows={2}
-          placeholder="Optional"
-          value={form.note}
-          onChange={(e) => set('note', e.target.value)}
-        />
       </form>
     </Dialog>
   )
