@@ -331,6 +331,8 @@ export function OrderPaymentDialog({
     }
   }
 
+  const onPhone = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+
   // Opens the GCash app on a phone. GCash has no link that fills in a person's number, so the
   // number is copied first and the buyer pastes it under Send Money.
   function openGcash() {
@@ -340,6 +342,11 @@ export function OrderPaymentDialog({
       } catch {
         // copying is a convenience only
       }
+    }
+    // A computer has no GCash app to open, so only the number is copied there.
+    if (!onPhone) {
+      toast.info('Number copied. Open GCash on your phone, choose Send Money, then paste it.')
+      return
     }
     toast.success('Number copied. Opening GCash…')
     const timer = window.setTimeout(() => {
@@ -357,7 +364,6 @@ export function OrderPaymentDialog({
     window.location.href = 'gcash://'
   }
 
-  const onPhone = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
   const gcash = info?.method === 'gcash'
 
   return (
@@ -432,19 +438,13 @@ export function OrderPaymentDialog({
                     Copy
                   </button>
                 </div>
-                {onPhone && (
-                  <button
-                    type="button"
-                    className="btn-primary mt-3 w-full"
-                    onClick={openGcash}
-                  >
-                    Open GCash
-                  </button>
-                )}
+                <button type="button" className="btn-primary mt-3 w-full" onClick={openGcash}>
+                  Open GCash
+                </button>
                 <p className="mt-2 text-[12px] leading-relaxed text-sky-900/70">
                   {onPhone
                     ? 'Tap Open GCash. The number is copied for you. In GCash choose Send Money, paste the number, and type the exact amount.'
-                    : 'On your phone, open GCash, choose Send Money, then enter this number and the exact amount.'}
+                    : 'On a computer, open GCash on your phone, choose Send Money, then enter this number and the exact amount.'}
                 </p>
               </div>
 
