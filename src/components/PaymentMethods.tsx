@@ -48,7 +48,7 @@ function ToggleCard({
   onClick(): void
   icon: string
   title: string
-  body: string
+  body?: string
 }) {
   return (
     <button
@@ -56,7 +56,7 @@ function ToggleCard({
       role="checkbox"
       aria-checked={on}
       onClick={onClick}
-      className={`flex items-start gap-3 rounded-xl border-2 p-3 text-left transition ${
+      className={`flex items-center gap-3 rounded-xl border-2 p-3 text-left transition ${
         on ? 'border-brand-600 bg-brand-50' : 'border-soil-200 bg-white hover:border-soil-300'
       }`}
     >
@@ -65,10 +65,10 @@ function ToggleCard({
       </span>
       <span className="flex-1">
         <span className="block text-[14px] font-bold text-soil-900">{title}</span>
-        <span className="block text-[12px] leading-snug text-soil-600">{body}</span>
+        {body && <span className="block text-[12px] leading-snug text-soil-600">{body}</span>}
       </span>
       <span
-        className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 text-[12px] font-bold ${
+        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 text-[12px] font-bold ${
           on ? 'border-brand-600 bg-brand-600 text-white' : 'border-soil-300 text-transparent'
         }`}
         aria-hidden
@@ -100,14 +100,12 @@ export function PayMethodPicker({
           onClick={toggleCash}
           icon="💵"
           title="Cash"
-          body="Paid when the buyer picks it up or you deliver it."
         />
         <ToggleCard
           on={gcash}
           onClick={toggleGcash}
           icon="📱"
           title="GCash"
-          body="The buyer sends the payment to your GCash number."
         />
       </div>
       <p className="mt-1.5 text-[12px] text-soil-500">
