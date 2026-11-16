@@ -213,8 +213,8 @@ export function sacks(value: unknown): string {
 /** Rice and corn are counted in sacks; a watermelon is counted in pieces. */
 export type Unit = 'sack' | 'piece'
 
-// Only rice is counted in sacks. Corn is counted in ears and watermelon in fruit,
-// both of which are pieces.
+// How a crop is COUNTED, on the Calendar and in the inventory. Only rice is counted in
+// sacks. Corn is counted in ears and watermelon in fruit, both of which are pieces.
 export const unitOf = (crop?: string | null): Unit => (crop === 'rice' ? 'sack' : 'piece')
 
 /** What one piece of the crop is called: an ear of corn, a watermelon. */
@@ -245,8 +245,37 @@ export function weightNote(value: unknown, crop?: string | null): string {
   return `${sacks(n)} ${unitWord(crop, n)} = ${(n * KG_PER_SACK).toLocaleString('en-PH')} kg`
 }
 
-/** "per sack" / "per piece", for prices. */
-export const perUnit = (crop?: string | null) => `per ${unitOf(crop)}`
+// ---------------------------------------------------------------------------
+// How a crop is SOLD, on the Market and in orders. This is not always how it is counted:
+// a watermelon is counted in fruit when it is harvested, but it is weighed and priced
+// by the kilo when it is sold. Rice is sold by the sack and corn by the piece.
+// ---------------------------------------------------------------------------
+export type SaleUnit = 'sack' | 'piece' | 'kg'
+
+export const saleUnitOf = (crop?: string | null): SaleUnit =>
+  crop === 'watermelon' ? 'kg' : unitOf(crop)
+
+/** The word a person says for one unit: "sack", "piece", "kilo". */
+export const saleName = (crop?: string | null): string => {
+  const u = saleUnitOf(crop)
+  return u === 'kg' ? 'kilo' : u
+}
+
+/** "sack"/"sacks", "piece"/"pieces", and "kg" (the same for one or many). */
+export function saleWord(crop?: string | null, n: number = 2): string {
+  const u = saleUnitOf(crop)
+  if (u === 'kg') return 'kg'
+  return n === 1 ? u : `${u}s`
+}
+
+/** "3 sacks", "1 piece", "40 kg" */
+export function saleLabel(value: unknown, crop?: string | null): string {
+  const n = toSacks(value)
+  return `${sacks(n)} ${saleWord(crop, n)}`
+}
+
+/** "per sack" / "per piece" / "per kilo", for prices. */
+export const perUnit = (crop?: string | null) => `per ${saleName(crop)}`
 
 /** Whether milling is offered. Only rice is milled. */
 export const canBeMilled = (crop?: string | null) => crop === 'rice'

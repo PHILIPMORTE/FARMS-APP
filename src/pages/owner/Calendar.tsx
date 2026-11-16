@@ -1428,8 +1428,10 @@ function DetailDialog({
             </dl>
           )}
           <p className="rounded-lg bg-soil-50 px-3.5 py-3 text-[13px] leading-relaxed text-soil-600">
-            This goes into your inventory. To sell it, open Market and add a listing with the
-            number of sacks and the price you want.
+            This goes into your inventory. To sell it, open Market and add a listing with{' '}
+            {schedule.crop === 'watermelon'
+              ? 'the kilos you weigh and your price per kilo.'
+              : 'the number of sacks and the price you want.'}
           </p>
         </div>
       )}

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import { RatingBadge } from '@/components/Ratings'
-import { initials, peso, sacks, sacksLabel, shortDate } from '@/lib/format'
+import { initials, peso, sacks, saleLabel, shortDate } from '@/lib/format'
 import { displayPhone } from '@/lib/validation'
 import type { Profile } from '@/lib/types'
 
@@ -168,7 +168,7 @@ export function BuyerContactCard({
                     </span>
                   </span>
                   <span className="num shrink-0 text-right text-[12px]">
-                    <span className="block font-semibold">{sacksLabel(h.quantity, h.crop)}</span>
+                    <span className="block font-semibold">{saleLabel(h.quantity, h.crop)}</span>
                     <span className="block text-brand-700">{peso(h.total_price)}</span>
                   </span>
                 </li>
