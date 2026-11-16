@@ -26,7 +26,8 @@ import {
   titleCase,
   todayISO,
 } from '@/lib/format'
-import { friendlyError, validateRequired } from '@/lib/validation'
+import { friendlyError, validateRequired, validateSpecify } from '@/lib/validation'
+import { OTHER, SpecifyField } from '@/components/SpecifyField'
 import type { Crop, Schedule } from '@/lib/types'
 import { STAGE_STYLE, growthStage, type GrowthStage } from '@/lib/growth'
 
@@ -45,7 +46,7 @@ const EXPENSE_CATEGORIES = [
   'Equipment',
   'Fuel',
   'Water',
-  'Other',
+  OTHER,
 ]
 
 /** Today in the Philippines, as a date the month grids can start from (noon, so no clock shift can move the day). */
@@ -1144,6 +1145,8 @@ function DetailDialog({
   const [cancelReason, setCancelReason] = useState('')
   const [actual, setActual] = useState('')
   const [category, setCategory] = useState(EXPENSE_CATEGORIES[0])
+  const [specify, setSpecify] = useState('')
+  const [specifyError, setSpecifyError] = useState<string | null>(null)
   const [amount, setAmount] = useState('')
   const [spent, setSpent] = useState(0)
   const [busy, setBusy] = useState(false)
@@ -1168,6 +1171,8 @@ function DetailDialog({
     setCancelReason('')
     setActual(schedule.actual_sacks != null ? String(schedule.actual_sacks) : '')
     setAmount('')
+    setSpecify('')
+    setSpecifyError(null)
     supabase
       .from('transactions')
       .select('amount')
@@ -1220,10 +1225,17 @@ function DetailDialog({
       toast.error('Enter the amount spent.')
       return
     }
+    const isOther = category === OTHER
+    if (isOther) {
+      const err = validateSpecify(specify, 'what the cost was for')
+      setSpecifyError(err)
+      if (err) return
+    }
     setBusy(true)
     const { error } = await supabase.rpc('add_crop_expense', {
       p_schedule_id: schedule!.id,
-      p_category: category,
+      // What was typed is what is saved, so the cost never reads just "Other".
+      p_category: isOther ? specify.trim() : category,
       p_amount: Number(amount),
       p_description: '',
     })
@@ -1461,9 +1473,24 @@ function DetailDialog({
           <Select
             label="What was it for?"
             value={category}
-            onChange={(e) => setCategory(e.target.value)}
+            onChange={(e) => {
+              setCategory(e.target.value)
+              setSpecifyError(null)
+            }}
             options={EXPENSE_CATEGORIES.map((x) => ({ value: x, label: x }))}
           />
+          {category === OTHER && (
+            <SpecifyField
+              label="What was the cost for?"
+              placeholder="e.g. Scarecrow, tarpaulin, transport"
+              value={specify}
+              error={specifyError}
+              onChange={(v) => {
+                setSpecify(v)
+                setSpecifyError(null)
+              }}
+            />
+          )}
           <PesoInput
             label="Amount spent"
             placeholder="0.00"

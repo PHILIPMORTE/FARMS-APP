@@ -4,9 +4,12 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { Field, SectionHeading, Select, Spinner, TextArea } from '@/components/ui'
 import { shortDate } from '@/lib/format'
-import { friendlyError, validateRequired } from '@/lib/validation'
+import { friendlyError, validateRequired, validateSpecify } from '@/lib/validation'
+import { SpecifyField } from '@/components/SpecifyField'
 import type { OwnerVerification, Role, VerificationStatus } from '@/lib/types'
 import type { ReactNode } from 'react'
+
+const OTHER_ID = 'Other government ID'
 
 const ID_TYPES = [
   'PhilSys National ID',
@@ -15,8 +18,15 @@ const ID_TYPES = [
   'Postal ID',
   'Voter’s ID',
   'Barangay Certificate',
-  'Other government ID',
+  OTHER_ID,
 ]
+
+/** The ID type that is saved: the type picked, or the one the person typed for Other. */
+function splitIdType(saved: string | null | undefined): { id_type: string; id_other: string } {
+  if (!saved) return { id_type: ID_TYPES[0], id_other: '' }
+  if (ID_TYPES.includes(saved)) return { id_type: saved, id_other: '' }
+  return { id_type: OTHER_ID, id_other: saved }
+}
 
 export function VerificationGate({ role, children }: { role: Role; children: ReactNode }) {
   const { profile } = useAuth()
@@ -86,6 +96,7 @@ function VerificationScreen({
   const [form, setForm] = useState({
     full_name: '',
     id_type: ID_TYPES[0],
+    id_other: '',
     id_number: '',
     farm_name: '',
     farm_address: '',
@@ -133,7 +144,7 @@ function VerificationScreen({
     setForm((f) => ({
       ...f,
       full_name: record?.full_name || profile?.name || '',
-      id_type: record?.id_type || ID_TYPES[0],
+      ...splitIdType(record?.id_type),
       id_number: record?.id_number || '',
       farm_name: record?.farm_name || '',
       farm_address: record?.farm_address || '',
@@ -175,6 +186,8 @@ function VerificationScreen({
 
     const next = {
       full_name: validateRequired(form.full_name, 'Full name'),
+      id_other:
+        form.id_type === OTHER_ID ? validateSpecify(form.id_other, 'which ID you are presenting') : null,
       id_photo: idFile || record?.id_photo_path ? null : 'Upload a photo of your ID.',
       selfie: selfie || record?.selfie_path ? null : 'Take a photo of yourself holding your ID.',
       farm_name: role === 'owner' ? validateRequired(form.farm_name, 'Farm name') : null,
@@ -245,7 +258,8 @@ function VerificationScreen({
       role,
       status: 'pending' as const,
       full_name: form.full_name.trim(),
-      id_type: form.id_type,
+      // What was typed for Other is what is saved, so the reviewer sees which ID it is.
+      id_type: form.id_type === OTHER_ID ? form.id_other.trim() : form.id_type,
       id_number: null,
       id_photo_path: photoPath,
       selfie_path: selfiePath,
@@ -345,6 +359,16 @@ function VerificationScreen({
               onChange={(e) => set('id_type', e.target.value)}
               options={ID_TYPES.map((t) => ({ value: t, label: t }))}
             />
+            {form.id_type === OTHER_ID && (
+              <SpecifyField
+                className="sm:col-span-2"
+                label="Which ID is it?"
+                placeholder="e.g. Senior Citizen ID, PRC ID, Passport"
+                value={form.id_other}
+                error={errors.id_other}
+                onChange={(v) => set('id_other', v)}
+              />
+            )}
 
             <div className="sm:col-span-2">
               <label className="label" htmlFor="idphoto">

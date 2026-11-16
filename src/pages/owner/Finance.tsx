@@ -5,10 +5,11 @@ import { useAuth } from '@/context/AuthContext'
 import { Badge, Dialog, Empty, Field, PesoInput, Select, Spinner, Stat } from '@/components/ui'
 import { Link } from 'react-router-dom'
 import { CROP_COLOR, CROP_EMOJI, peso, pesoShort, shortDate, titleCase, todayISO } from '@/lib/format'
-import { friendlyError, validateAmount } from '@/lib/validation'
+import { friendlyError, validateAmount, validateSpecify } from '@/lib/validation'
+import { OTHER, SpecifyField } from '@/components/SpecifyField'
 import type { Transaction, TxnType } from '@/lib/types'
 
-const INCOME_CATEGORIES = ['Crop Sales', 'Livestock Sales', 'Government Subsidy', 'Other Income']
+const INCOME_CATEGORIES = ['Crop Sales', 'Government Subsidy', OTHER]
 const EXPENSE_CATEGORIES = [
   'Labor',
   'Seeds',
@@ -18,8 +19,12 @@ const EXPENSE_CATEGORIES = [
   'Fuel',
   'Water',
   'Electricity',
-  'Other',
+  OTHER,
 ]
+
+// Entries saved before "Other" asked what it was say only "Other" or "Other Income".
+// Editing one opens it as Other, so the owner can say what it really was.
+const LEGACY_OTHER = ['Other', 'Other Income']
 
 /**
  * How many entries, newest first, can still be edited. It counts everything in the list:
@@ -201,10 +206,13 @@ function TxnDialog({
   const isIncome = type !== 'expense'
   const baseCategories = isIncome ? INCOME_CATEGORIES : EXPENSE_CATEGORIES
   const categories =
-    editing && !baseCategories.includes(editing.category) ? [editing.category, ...baseCategories] : baseCategories
+    editing && !baseCategories.includes(editing.category) && !LEGACY_OTHER.includes(editing.category)
+      ? [editing.category, ...baseCategories]
+      : baseCategories
 
   const [form, setForm] = useState({
     category: categories[0],
+    specify: '',
     amount: '',
     description: '',
     date: todayISO(),
@@ -215,7 +223,8 @@ function TxnDialog({
   useEffect(() => {
     if (editing) {
       setForm({
-        category: editing.category,
+        category: LEGACY_OTHER.includes(editing.category) ? OTHER : editing.category,
+        specify: '',
         amount: String(editing.amount),
         description: editing.description ?? '',
         date: editing.date,
@@ -224,6 +233,7 @@ function TxnDialog({
     } else if (type) {
       setForm({
         category: (isIncome ? INCOME_CATEGORIES : EXPENSE_CATEGORIES)[0],
+        specify: '',
         amount: '',
         description: '',
         date: todayISO(),
@@ -234,13 +244,19 @@ function TxnDialog({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
+    const isOther = form.category === OTHER
     const next = {
       amount:
         validateAmount(form.amount, 'amount') ??
         (Number(form.amount) > 0 ? null : 'Enter an amount greater than zero.'),
+      specify: isOther
+        ? validateSpecify(form.specify, isIncome ? 'what the income was from' : 'what the expense was for')
+        : null,
     }
     setErrors(next)
-    if (next.amount) return
+    if (next.amount || next.specify) return
+    // What the person typed is what is saved and shown, so the entry never reads just "Other".
+    const category = isOther ? form.specify.trim() : form.category
 
     setBusy(true)
     if (editing) {
@@ -249,7 +265,7 @@ function TxnDialog({
       const { data, error } = await supabase
         .from('transactions')
         .update({
-          category: form.category,
+          category,
           amount: Number(form.amount),
           description: form.description.trim(),
           date: form.date,
@@ -276,7 +292,7 @@ function TxnDialog({
     const { error } = await supabase.from('transactions').insert({
       farm_id: farmId,
       type,
-      category: form.category,
+      category,
       amount: Number(form.amount),
       description: form.description.trim(),
       date: form.date,
@@ -312,7 +328,10 @@ function TxnDialog({
           <Select
             label="Category"
             value={form.category}
-            onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
+            onChange={(e) => {
+              setForm((f) => ({ ...f, category: e.target.value }))
+              setErrors((er) => ({ ...er, specify: null }))
+            }}
             options={categories.map((c) => ({ value: c, label: c }))}
           />
           <PesoInput
@@ -323,6 +342,18 @@ function TxnDialog({
             onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
           />
         </div>
+        {form.category === OTHER && (
+          <SpecifyField
+            label={isIncome ? 'What kind of income is it?' : 'What was the expense for?'}
+            placeholder={isIncome ? 'e.g. Rent of tractor, sale of banana' : 'e.g. Pump repair, transport'}
+            value={form.specify}
+            error={errors.specify}
+            onChange={(v) => {
+              setForm((f) => ({ ...f, specify: v }))
+              setErrors((er) => ({ ...er, specify: null }))
+            }}
+          />
+        )}
         <div>
           <label className="label" htmlFor="txn-date">
             Date

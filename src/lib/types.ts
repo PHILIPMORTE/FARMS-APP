@@ -182,7 +182,8 @@ export interface Transaction {
   created_at: string
 }
 
-export type AddressLabel = 'Home' | 'Work' | 'Other'
+/** Home, Work, or a name the buyer typed (like Mom's house). */
+export type AddressLabel = string
 
 /** A place a buyer has saved to receive orders, like the address book in Shopee. */
 export interface BuyerAddress {

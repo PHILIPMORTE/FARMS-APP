@@ -59,6 +59,23 @@ export function validateSacks(raw: string | number, opts: { min?: number; max?: 
   return null
 }
 
+/** Longest text a person can type to say what an "Other" choice is. */
+export const SPECIFY_MAX = 40
+
+/**
+ * The check for the box that opens when someone picks "Other". The box must say what it
+ * is, so an empty box or the word "Other" on its own is refused. `what` finishes the
+ * sentence "Type ...", for example "what the income was from".
+ */
+export function validateSpecify(raw: string, what = 'what it is'): string | null {
+  const s = raw.trim()
+  if (!s) return `Type ${what}.`
+  if (s.length < 2) return 'Use at least 2 characters.'
+  if (/^others?(\s+(income|expenses?|government\s+id))?$/i.test(s))
+    return `Say ${what}, not just "Other".`
+  return null
+}
+
 export function validateWholeNumber(raw: string | number, min = 0, label = 'value'): string | null {
   const s = String(raw).trim()
   if (!s) return `Enter a ${label}.`

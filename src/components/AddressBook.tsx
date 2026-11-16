@@ -5,17 +5,29 @@ import { useAuth } from '@/context/AuthContext'
 import { Badge, Dialog, Field, Select, SectionHeading, Spinner, TextArea } from '@/components/ui'
 import { PurokSelect, usePuroks } from '@/components/PurokSelect'
 import type { Purok } from '@/components/PurokSelect'
-import { displayPhone, friendlyError, validateName, validatePhone, validateRequired } from '@/lib/validation'
-import type { AddressLabel, BuyerAddress } from '@/lib/types'
+import {
+  displayPhone,
+  friendlyError,
+  validateName,
+  validatePhone,
+  validateRequired,
+  validateSpecify,
+} from '@/lib/validation'
+import { OTHER, SpecifyField } from '@/components/SpecifyField'
+import type { BuyerAddress } from '@/lib/types'
 
 /** Where a new address starts. The buyer can change every part. */
 const START_PLACE = { province: 'Negros Oriental', city: 'Bayawan City', barangay: 'Pagatban' }
 
-const LABEL_TONE: Record<AddressLabel, 'brand' | 'blue' | 'grey'> = {
+const LABEL_TONE: Record<string, 'brand' | 'blue' | 'grey'> = {
   Home: 'brand',
   Work: 'blue',
-  Other: 'grey',
 }
+
+/** The name the buyer typed for "Other" (like Mom's house) is shown as it is, in grey. */
+const labelTone = (label: string) => LABEL_TONE[label] ?? 'grey'
+
+const PRESET_LABELS = ['Home', 'Work']
 
 /** "Blk 2 Lot 5, Purok 3, Pagatban, Bayawan City, Negros Oriental" */
 export function addressLine(
@@ -54,7 +66,9 @@ export function useBuyerAddresses() {
 /* -------------------------------------------------------------------------- */
 
 interface FormState {
-  label: AddressLabel
+  /** Home, Work, or Other. When it is Other, `otherLabel` says what. */
+  label: string
+  otherLabel: string
   name: string
   phone: string
   province: string
@@ -89,8 +103,13 @@ export function AddressFormDialog({
     if (!open) return
     setErrors({})
     if (editing) {
+      // A label that is not Home or Work is one the buyer typed, so it opens as Other with
+      // that text in the box. An older address that says only "Other" opens with an empty
+      // box, so the buyer can say what it is.
+      const custom = !PRESET_LABELS.includes(editing.label)
       setForm({
-        label: editing.label,
+        label: custom ? OTHER : editing.label,
+        otherLabel: custom && editing.label !== OTHER ? editing.label : '',
         name: editing.recipient_name,
         phone: editing.phone.startsWith('+63') ? `0${editing.phone.slice(3)}` : editing.phone,
         province: editing.province,
@@ -104,6 +123,7 @@ export function AddressFormDialog({
     } else {
       setForm({
         label: 'Home',
+        otherLabel: '',
         name: profile?.name ?? '',
         phone: profile?.phone?.startsWith('+63') ? `0${profile.phone.slice(3)}` : profile?.phone ?? '',
         province: profile?.province?.trim() || START_PLACE.province,
@@ -138,6 +158,8 @@ export function AddressFormDialog({
         form.street.trim().length >= 3
           ? null
           : 'Enter the street, house number or a landmark so the farm can find you.',
+      otherLabel:
+        form.label === OTHER ? validateSpecify(form.otherLabel, 'a name for this address, like Mom’s house') : null,
     }
     setErrors(next)
     if (Object.values(next).some(Boolean)) return
@@ -145,7 +167,8 @@ export function AddressFormDialog({
     setBusy(true)
     const { data, error } = await supabase.rpc('save_buyer_address', {
       p_id: editing?.id ?? null,
-      p_label: form.label,
+      // What the buyer typed is the label, so it never reads just "Other".
+      p_label: form.label === OTHER ? form.otherLabel.trim() : form.label,
       p_name: form.name.trim(),
       p_phone: form.phone,
       p_province: form.province.trim(),
@@ -256,13 +279,23 @@ export function AddressFormDialog({
         <Select
           label="Label as"
           value={form.label}
-          onChange={(e) => set('label', e.target.value as AddressLabel)}
+          onChange={(e) => set('label', e.target.value)}
           options={[
             { value: 'Home', label: 'Home' },
             { value: 'Work', label: 'Work' },
-            { value: 'Other', label: 'Other' },
+            { value: OTHER, label: 'Other' },
           ]}
         />
+        {form.label === OTHER && (
+          <SpecifyField
+            label="Name this address"
+            placeholder="e.g. Mom’s house, Farm stall"
+            max={30}
+            value={form.otherLabel}
+            error={errors.otherLabel}
+            onChange={(v) => set('otherLabel', v)}
+          />
+        )}
 
         <label className="flex items-center gap-2.5 text-[14px]">
           <input
@@ -290,7 +323,7 @@ function AddressText({ a, puroks }: { a: BuyerAddress; puroks: Purok[] }) {
   return (
     <>
       <div className="flex flex-wrap items-center gap-1.5">
-        <Badge tone={LABEL_TONE[a.label]}>{a.label}</Badge>
+        <Badge tone={labelTone(a.label)}>{a.label}</Badge>
         {a.is_default && <Badge tone="green">Default</Badge>}
       </div>
       <p className="mt-1.5 text-[14px] font-bold">
