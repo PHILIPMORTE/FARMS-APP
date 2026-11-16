@@ -20,7 +20,6 @@ import {
   CROPS,
   CROP_EMOJI,
   VARIETIES,
-  KG_PER_SACK,
   availableSacks,
   peso,
   pesoShort,
@@ -29,11 +28,11 @@ import {
   sacks,
   canBeMilled,
   perUnit,
-  saleWord,
   unitWord,
-  saleUnitOf,
-  saleName,
-  saleLabel,
+  unitOf,
+  priceNoun,
+  kgOf,
+  sacksLabel,
   shortDate,
   titleCase,
 } from '@/lib/format'
@@ -199,7 +198,7 @@ export default function OwnerMarket() {
           body={
             query
               ? 'Try the variety name, or a crop like rice, corn or watermelon.'
-              : 'Add your harvest as a listing and buyers can order rice by the sack, corn by the piece and watermelon by the kilo.'
+              : 'Add your harvest as a listing and buyers can order rice by the sack, and corn or watermelon by the piece.'
           }
           action={
             !query && (
@@ -347,7 +346,7 @@ export default function OwnerMarket() {
                   </span>
                 </td>
                 <td className="num px-4 py-3 text-right font-bold">
-                  {saleLabel(o.quantity, o.products?.crop)}
+                  {sacksLabel(o.quantity, o.products?.crop)}
                 </td>
                 <td className="num px-4 py-3 text-right font-bold text-brand-700">
                   {peso(o.total_price)}
@@ -436,7 +435,7 @@ export default function OwnerMarket() {
                   )}
                 </td>
                 <td className="num px-4 py-3 text-right">
-                  {saleLabel(o.quantity, o.products?.crop)}
+                  {sacksLabel(o.quantity, o.products?.crop)}
                 </td>
                 <td className="num px-4 py-3 text-right font-semibold">{peso(o.total_price)}</td>
                 <td className="px-4 py-3">
@@ -593,13 +592,9 @@ function AddProductDialog({
   // Milling applies to rice only; corn and watermelon are always sold as harvested.
   const isRice = canBeMilled(form.crop)
   const isMilled = isRice && form.form === 'milled'
-  const unit = saleUnitOf(form.crop)
-  const unitSingular = saleName(form.crop)
-  const unitPlural = saleWord(form.crop, 2)
-  // A harvest is counted in the crop's own unit (fruit for watermelon), which is not
-  // always the unit it is sold in.
-  const soldByWeight = saleUnitOf(form.crop) === 'kg'
-  const harvestPlural = unitWord(form.crop, 2)
+  const unit = unitOf(form.crop)
+  const unitPlural = unitWord(form.crop, 2)
+  const isMelon = form.crop === 'watermelon'
 
   const chosenVariety =
     form.variety === '__other' ? form.customVariety.trim() : form.variety.trim()
@@ -614,10 +609,8 @@ function AddProductDialog({
     )
     .reduce((sum, p) => sum + p.quantity, 0)
 
-  // Watermelon is harvested in fruit but sold in kilos, so the two numbers cannot be
-  // compared: the owner weighs the harvest and enters the kilos being sold.
   const maxSacks =
-    !isMilled && matchedHarvest && !soldByWeight
+    !isMilled && matchedHarvest
       ? Math.max((matchedHarvest.actual_sacks ?? 0) - alreadyListed, 0)
       : null
 
@@ -743,7 +736,11 @@ function AddProductDialog({
       open={open}
       onClose={onClose}
       title="Add a product"
-      description={`Buyers order by the ${unitSingular}.`}
+      description={
+        isMelon
+          ? 'Buyers order by the piece, and a watermelon counts as 1 kg. The price is per kg.'
+          : `Buyers order by the ${unit}.`
+      }
       footer={
         <>
           <button type="button" className="btn-ghost" onClick={onClose}>
@@ -854,10 +851,11 @@ function AddProductDialog({
 
         <div>
           <SackInput
-            label={unit === 'kg' ? 'Kilos to sell' : unit === 'piece' ? 'Number of pieces' : 'Number of sacks'}
+            label={unit === 'piece' ? 'Number of pieces' : 'Number of sacks'}
             unit={unitPlural}
             placeholder="0"
             max={maxSacks ?? undefined}
+            hint={isMelon ? '1 watermelon counts as 1 kg' : undefined}
             value={form.quantity}
             error={errors.quantity}
             onChange={(e) => set('quantity', e.target.value)}
@@ -870,36 +868,24 @@ function AddProductDialog({
                   Harvested {shortDate(matchedHarvest.harvested_at ?? matchedHarvest.harvest_date)}
                 </dt>
                 <dd className="num font-semibold">
-                  {sacks(matchedHarvest.actual_sacks ?? 0)} {harvestPlural}
+                  {sacks(matchedHarvest.actual_sacks ?? 0)} {unitPlural}
                 </dd>
               </div>
-              {soldByWeight ? (
-                <div className="border-t border-soil-200 pt-1.5">
-                  <dt className="sr-only">Note</dt>
-                  <dd className="text-[12px] leading-relaxed text-soil-600">
-                    Watermelon is sold by the kilo. Weigh your harvest and enter the kilos you want
-                    to sell.
-                  </dd>
+              {alreadyListed > 0 && (
+                <div className="flex justify-between gap-3">
+                  <dt className="text-soil-600">Already listed</dt>
+                  <dd className="num font-semibold">{sacks(alreadyListed)} {unitPlural}</dd>
                 </div>
-              ) : (
-                <>
-                  {alreadyListed > 0 && (
-                    <div className="flex justify-between gap-3">
-                      <dt className="text-soil-600">Already listed</dt>
-                      <dd className="num font-semibold">{sacks(alreadyListed)} {unitPlural}</dd>
-                    </div>
-                  )}
-                  <div className="flex justify-between gap-3 border-t border-soil-200 pt-1">
-                    <dt className="font-semibold">Most you can sell</dt>
-                    <dd className="num font-bold text-brand-700">{sacks(maxSacks ?? 0)} {unitPlural}</dd>
-                  </div>
-                </>
               )}
+              <div className="flex justify-between gap-3 border-t border-soil-200 pt-1">
+                <dt className="font-semibold">Most you can sell</dt>
+                <dd className="num font-bold text-brand-700">{sacks(maxSacks ?? 0)} {unitPlural}</dd>
+              </div>
             </dl>
           )}
         </div>
         <PesoInput
-          label={`Price per ${unitSingular}`}
+          label={`Price per ${priceNoun(form.crop)}`}
           placeholder="0.00"
           value={form.price}
           error={errors.price}
@@ -983,7 +969,7 @@ function AddProductDialog({
               You already list {existing.variety}
             </p>
             <p className="mt-0.5 text-[13px] leading-relaxed text-amber-800">
-              {soldByWeight ? 'The kilos' : `These ${unitPlural}`} will be added to that listing, taking it from{' '}
+              These {unitPlural} will be added to that listing, taking it from{' '}
               <span className="num font-semibold">{sacks(existing.quantity)}</span> to{' '}
               <span className="num font-semibold">
                 {sacks(existing.quantity + (parseInt(form.quantity || '0', 10) || 0))}
@@ -1102,11 +1088,11 @@ function EditStockDialog({
     (next === 0 || Math.abs(diff) >= Math.max(10, Math.ceil(product.quantity / 2)))
 
   async function save() {
-    const err = validateSacks(qty, { min: 0, unit: saleUnitOf(product?.crop) })
+    const err = validateSacks(qty, { min: 0, unit: unitOf(product?.crop) })
     setError(err)
     if (err) return
     if (newPrice === '' || Number(newPrice) < 0) {
-      toast.error(`Enter a valid price per ${saleName(product?.crop)}.`)
+      toast.error(`Enter a valid price per ${priceNoun(product?.crop)}.`)
       return
     }
 
@@ -1205,7 +1191,7 @@ function EditStockDialog({
       open
       onClose={onClose}
       title={`Edit listing — ${product.variety}`}
-      description={`${saleLabel(product.quantity, product.crop)} at ${peso(product.price)} ${perUnit(product.crop)}`}
+      description={`${sacksLabel(product.quantity, product.crop)} at ${peso(product.price)} ${perUnit(product.crop)}`}
       footer={
         <>
           <button
@@ -1228,13 +1214,13 @@ function EditStockDialog({
       <div className="space-y-4">
         <SackInput
           label="New stock level"
-          unit={saleWord(product.crop, 2)}
+          unit={unitWord(product.crop, 2)}
           min={0}
           value={qty}
           error={error}
           hint={
             product.reserved > 0
-              ? `${saleLabel(product.reserved, product.crop)} reserved by open orders.`
+              ? `${sacksLabel(product.reserved, product.crop)} reserved by open orders.`
               : 'Set to 0 to mark this product out of stock.'
           }
           onChange={(e) => {
@@ -1245,7 +1231,7 @@ function EditStockDialog({
         />
 
         <PesoInput
-          label={`Price per ${saleName(product.crop)}`}
+          label={`Price per ${priceNoun(product.crop)}`}
           placeholder="0.00"
           value={newPrice}
           hint={
@@ -1374,15 +1360,13 @@ function EditStockDialog({
               <dt className="text-soil-600">Change</dt>
               <dd className={`num font-bold ${diff > 0 ? 'text-green-700' : 'text-red-600'}`}>
                 {diff > 0 ? '+' : ''}
-                {saleLabel(Math.abs(diff), product.crop)}
+                {sacksLabel(Math.abs(diff), product.crop)}
               </dd>
             </div>
-            {saleUnitOf(product.crop) !== 'piece' && (
+            {kgOf(next, product.crop) !== null && (
               <div className="flex justify-between">
                 <dt className="text-soil-600">New weight</dt>
-                <dd className="num font-semibold">
-                  {saleUnitOf(product.crop) === 'kg' ? next : next * KG_PER_SACK} kg
-                </dd>
+                <dd className="num font-semibold">{kgOf(next, product.crop)} kg</dd>
               </div>
             )}
             <div className="flex justify-between">
@@ -1402,7 +1386,7 @@ function EditStockDialog({
             <p className="mt-1 text-[13px] leading-relaxed text-amber-800">
               {next === 0
                 ? 'Buyers will see it as out of stock and cannot order it until you restock.'
-                : `Stock goes from ${sacks(product.quantity)} to ${saleLabel(next!, product.crop)}. Check the number before saving.`}
+                : `Stock goes from ${sacks(product.quantity)} to ${sacksLabel(next!, product.crop)}. Check the number before saving.`}
             </p>
           </div>
         )}

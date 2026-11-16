@@ -44,18 +44,14 @@ export function validateName(input: string): string | null {
   return null
 }
 
-export function validateSacks(raw: string | number, opts: { min?: number; max?: number; unit?: 'sack' | 'piece' | 'kg' } = {}): string | null {
+export function validateSacks(raw: string | number, opts: { min?: number; max?: number; unit?: 'sack' | 'piece' } = {}): string | null {
   const { min = 1, max } = opts
-  const unit = opts.unit ?? 'sack'
-  // "kg" has no plural; a sack or a piece gets an "s" when there is more than one.
-  const word = (n: number) => (unit === 'kg' ? 'kg' : `${unit}${n === 1 ? '' : 's'}`)
   const s = String(raw).trim()
-  if (!s) return unit === 'kg' ? 'Enter the number of kilos.' : `Enter a number of ${unit}s.`
-  if (!/^\d+$/.test(s))
-    return `${unit === 'kg' ? 'Kilos' : unit === 'piece' ? 'Pieces' : 'Sacks'} must be a whole number — no decimals.`
+  if (!s) return `Enter a number of ${(opts.unit ?? 'sack')}s.`
+  if (!/^\d+$/.test(s)) return `${(opts.unit ?? 'sack') === 'piece' ? 'Pieces' : 'Sacks'} must be a whole number — no decimals.`
   const n = parseInt(s, 10)
-  if (n < min) return `Enter at least ${min} ${word(min)}.`
-  if (max !== undefined && n > max) return `Only ${max} ${word(max)} available.`
+  if (n < min) return `Enter at least ${min} ${opts.unit ?? 'sack'}${min === 1 ? '' : 's'}.`
+  if (max !== undefined && n > max) return `Only ${max} ${opts.unit ?? 'sack'}${max === 1 ? '' : 's'} available.`
   return null
 }
 

@@ -236,46 +236,42 @@ export function sacksLabel(value: unknown, crop?: string | null): string {
 }
 
 /**
- * For a sack, the weight it stands for. A piece of watermelon has no fixed
- * weight (it depends on the variety), so only the count is shown.
+ * For a sack, the weight it stands for. A watermelon is counted as 1 kg a piece. An ear of
+ * corn has no fixed weight, so only the count is shown.
  */
 export function weightNote(value: unknown, crop?: string | null): string {
   const n = toSacks(value)
-  if (unitOf(crop) === 'piece') return `${sacks(n)} ${unitWord(crop, n)}`
-  return `${sacks(n)} ${unitWord(crop, n)} = ${(n * KG_PER_SACK).toLocaleString('en-PH')} kg`
+  const kg = kgOf(n, crop)
+  if (kg === null) return `${sacks(n)} ${unitWord(crop, n)}`
+  return `${sacks(n)} ${unitWord(crop, n)} = ${kg.toLocaleString('en-PH')} kg`
 }
 
 // ---------------------------------------------------------------------------
-// How a crop is SOLD, on the Market and in orders. This is not always how it is counted:
-// a watermelon is counted in fruit when it is harvested, but it is weighed and priced
-// by the kilo when it is sold. Rice is sold by the sack and corn by the piece.
+// Watermelon is counted in pieces, and one piece is taken as 1 kg. So a watermelon
+// listing is a number of pieces (taken from the harvest inventory), and the price is
+// written per kg. Rice is priced per sack and corn per piece.
 // ---------------------------------------------------------------------------
-export type SaleUnit = 'sack' | 'piece' | 'kg'
+export const KG_PER_MELON = 1
 
-export const saleUnitOf = (crop?: string | null): SaleUnit =>
-  crop === 'watermelon' ? 'kg' : unitOf(crop)
-
-/** The word a person says for one unit: "sack", "piece", "kilo". */
-export const saleName = (crop?: string | null): string => {
-  const u = saleUnitOf(crop)
-  return u === 'kg' ? 'kilo' : u
+/** What a price is written per: "sack", "piece" or "kg". */
+export const priceNoun = (crop?: string | null): string => {
+  if (crop === 'watermelon') return 'kg'
+  return unitOf(crop)
 }
 
-/** "sack"/"sacks", "piece"/"pieces", and "kg" (the same for one or many). */
-export function saleWord(crop?: string | null, n: number = 2): string {
-  const u = saleUnitOf(crop)
-  if (u === 'kg') return 'kg'
-  return n === 1 ? u : `${u}s`
-}
+/** "per sack" / "per piece" / "per kg", for prices. */
+export const perUnit = (crop?: string | null) => `per ${priceNoun(crop)}`
 
-/** "3 sacks", "1 piece", "40 kg" */
-export function saleLabel(value: unknown, crop?: string | null): string {
+/**
+ * The weight a count stands for, in kg, or null when it has no fixed weight.
+ * A sack is 25 kg and a watermelon is counted as 1 kg. An ear of corn has no fixed weight.
+ */
+export function kgOf(value: unknown, crop?: string | null): number | null {
   const n = toSacks(value)
-  return `${sacks(n)} ${saleWord(crop, n)}`
+  if (crop === 'watermelon') return n * KG_PER_MELON
+  if (unitOf(crop) === 'sack') return n * KG_PER_SACK
+  return null
 }
-
-/** "per sack" / "per piece" / "per kilo", for prices. */
-export const perUnit = (crop?: string | null) => `per ${saleName(crop)}`
 
 /** Whether milling is offered. Only rice is milled. */
 export const canBeMilled = (crop?: string | null) => crop === 'rice'

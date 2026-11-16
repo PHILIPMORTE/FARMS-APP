@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Empty, Spinner } from '@/components/ui'
-import { CROP_COLOR, CROP_EMOJI, peso, sacks, saleLabel, shortDate, titleCase } from '@/lib/format'
+import { CROP_COLOR, CROP_EMOJI, peso, sacks, sacksLabel, shortDate, titleCase } from '@/lib/format'
 import type { Crop } from '@/lib/types'
 
 interface Row {
@@ -87,7 +87,7 @@ export function BuyerPurchases({ buyerId }: { buyerId: string }) {
                 {titleCase(r.crop)} · {shortDate(r.created_at)}
               </span>
               <span className="num block text-[12px] text-soil-600">
-                {saleLabel(r.quantity, r.crop)} × {peso(r.price)}
+                {sacksLabel(r.quantity, r.crop)} × {peso(r.price)}
               </span>
             </span>
 
